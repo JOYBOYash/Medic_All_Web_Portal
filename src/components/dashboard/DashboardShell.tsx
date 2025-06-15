@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -59,8 +60,9 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                 {navItems.map((item) => (
                   <SidebarMenuItem key={item.href} className="relative">
                     {!item.submenu ? (
-                       <Link href={item.href} passHref legacyBehavior>
+                       <Link href={item.href}>
                         <SidebarMenuButton
+                          asChild
                           isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
@@ -86,8 +88,8 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                         <SidebarMenuSub>
                           {item.submenu.map(subItem => (
                             <SidebarMenuSubItem key={subItem.href}>
-                               <Link href={subItem.href} passHref legacyBehavior>
-                                <SidebarMenuSubButton isActive={pathname === subItem.href}>
+                               <Link href={subItem.href}>
+                                <SidebarMenuSubButton asChild isActive={pathname === subItem.href}>
                                   {subItem.icon}
                                   <span>{subItem.title}</span>
                                 </SidebarMenuSubButton>
