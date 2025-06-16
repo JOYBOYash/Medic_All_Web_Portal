@@ -14,28 +14,34 @@ export default function DoctorSettingsPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkMode, setDarkMode] = React.useState(false); 
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true); // Local loader for page content
 
 
   useEffect(() => {
-    if (!authLoading) { // Only proceed when auth context is not loading
-        setDataLoading(true); // Start local data "loading" / setup phase
-
-        // Simulate settings load or setup for this page
-        const timer = setTimeout(() => {
-            setDataLoading(false); // Local state for content visibility
-            setPageLoading(false); // Global page loader overlay off
-        }, 50); // Short delay, adjust if needed
-
-        return () => clearTimeout(timer);
+    if (authLoading) {
+      // Auth context is still loading, page is effectively loading.
+      // DashboardShell should handle the global loader via isPageLoading.
+      // Ensure local loader is also on.
+      setDataLoading(true);
+      return; // Wait for authLoading to become false.
     }
+
+    // authLoading is false.
+    // This page has minimal setup beyond what AuthContext provides.
+    // Turn off local loader and then global loader.
+    setDataLoading(false); // Turn off the page's internal content loader.
+    setPageLoading(false); // Explicitly turn off the DashboardShell's global loader overlay.
+
   }, [authLoading, setPageLoading]);
 
-  if (authLoading) {
+  // This guard is mostly for the initial render if AuthContext is still resolving.
+  // DashboardShell also has a similar guard for the global loader.
+  if (authLoading) { 
     return null; 
   }
   
-  if (dataLoading) { // This page's specific content loader
+  // This local 'dataLoading' controls the visibility of this page's own content loader
+  if (dataLoading) { 
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

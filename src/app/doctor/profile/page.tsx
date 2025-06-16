@@ -50,65 +50,82 @@ const mockClinic: ClinicDetails = {
 export default function DoctorProfilePage() {
   const { user: authUser, userProfile: authUserProfile, loading: authLoading, setPageLoading } = useAuth();
   
-  const [user, setUser] = useState<UserProfile>(authUserProfile || mockUser); 
+  const [user, setUser] = useState<UserProfile>(mockUser); 
   const [clinic, setClinic] = useState<ClinicDetails>(mockClinic); 
-  const [dataLoading, setDataLoading] = useState(true); 
+  const [dataLoading, setDataLoading] = useState(true); // Local loader for page content
 
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
     defaultValues: {
-      displayName: "", // Will be set by useEffect
-      email: "",       // Will be set by useEffect
+      displayName: "", 
+      email: "",       
     },
   });
 
   const clinicForm = useForm<ClinicDetailsFormValues>({
     resolver: zodResolver(clinicDetailsSchema),
-    defaultValues: mockClinic, // Mock data is fine for default
+    defaultValues: mockClinic, 
   });
 
   useEffect(() => {
-    if (!authLoading) { // Only proceed when auth context is not loading
-      setDataLoading(true); // Start local data "loading" / setup phase
-
-      if (authUserProfile) {
-        setUser(authUserProfile);
-        profileForm.reset({
-          displayName: authUserProfile.displayName || "",
-          email: authUserProfile.email || "",
-        });
-      }
-      clinicForm.reset(mockClinic); // Reset with mock data
-
-      // After forms are reset and local state is set, turn off loaders
-      const timer = setTimeout(() => {
-        setDataLoading(false); // Turn off local data loader for this page's content
-        setPageLoading(false); // Turn off global page loader overlay
-      }, 50); // Small delay to ensure state updates propagate
-
-      return () => clearTimeout(timer);
+    if (authLoading) {
+      // Auth context is still loading, so the page is effectively loading.
+      // DashboardShell likely set isPageLoading(true).
+      // Ensure local data loader is also on.
+      setDataLoading(true);
+      return; // Wait for authLoading to become false.
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, authUserProfile, setPageLoading]); // form.reset methods are stable
+
+    // authLoading is false, proceed with page setup.
+    setDataLoading(true); // Turn on local loader while forms are reset.
+
+    if (authUserProfile) {
+      setUser(authUserProfile);
+      profileForm.reset({
+        displayName: authUserProfile.displayName || "",
+        email: authUserProfile.email || "",
+      });
+    } else {
+      // Fallback or initial state if authUserProfile isn't immediately available post-authLoading
+      setUser(mockUser); // Or clear, depending on desired behavior
+       profileForm.reset({
+        displayName: mockUser.displayName || "",
+        email: mockUser.email || "",
+      });
+    }
+    
+    // Clinic form uses mock data
+    setClinic(mockClinic);
+    clinicForm.reset(mockClinic);
+
+    // All internal setup is complete.
+    setDataLoading(false); // Turn off the page's internal content loader.
+    setPageLoading(false); // Explicitly turn off the DashboardShell's global loader overlay.
+
+  }, [authLoading, authUserProfile, setPageLoading, profileForm, clinicForm]);
 
 
   const onProfileSubmit = (data: UserProfileFormValues) => {
     console.log("Profile update:", data);
     setUser(prev => ({...prev, ...data}));
-    alert("Profile updated successfully (placeholder)!");
+    alert("Profile updated successfully (Medicall placeholder)!");
   };
 
   const onClinicSubmit = (data: ClinicDetailsFormValues) => {
     console.log("Clinic details update:", data);
     setClinic(prev => ({...prev, ...data}));
-    alert("Clinic details updated successfully (placeholder)!");
+    alert("Clinic details updated successfully (Medicall placeholder)!");
   };
 
-  if (authLoading) {
-    return null; // DashboardShell handles the primary loader
+  // The global loader (isPageLoading) is handled by useEffect.
+  // This 'authLoading' check is for the case where AuthContext is still resolving.
+  // DashboardShell also has a similar guard.
+  if (authLoading) { 
+    return null; 
   }
   
-  if (dataLoading) { // This page's specific content loader
+  // This local 'dataLoading' controls the visibility of the page's own content loader.
+  if (dataLoading) { 
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
