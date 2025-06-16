@@ -1,14 +1,16 @@
+
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { PrescribedMedicine } from "@/types/homeoconnect";
 import { format } from "date-fns";
-import { Pill, Bell, Clock, ListChecks } from "lucide-react";
+import { Pill, Bell, Clock, ListChecks, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 // Mock data - replace with API call
 const mockPrescriptions: PrescribedMedicine[] = [
@@ -19,13 +21,26 @@ const mockPrescriptions: PrescribedMedicine[] = [
 
 interface MedicationWithReminder extends PrescribedMedicine {
   reminderEnabled: boolean;
-  lastTaken?: Date; // For tracking
+  lastTaken?: Date; 
 }
 
 export default function PatientMedicationsPage() {
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
   const [medications, setMedications] = useState<MedicationWithReminder[]>(
     mockPrescriptions.map(p => ({ ...p, reminderEnabled: true }))
   );
+  const [dataLoading, setDataLoading] = useState(true); // Local state
+
+  useEffect(() => {
+    // Simulate data fetching
+    setPageLoading(true);
+    setDataLoading(true);
+    setTimeout(() => {
+      // setMedications(fetchedMeds); // From API
+      setDataLoading(false);
+      setPageLoading(false);
+    }, 500); 
+  }, [setPageLoading]);
 
   const toggleReminder = (medicineId: string) => {
     setMedications(prevMeds => 
@@ -36,11 +51,10 @@ export default function PatientMedicationsPage() {
   };
   
   const markAsTaken = (medicineId: string, timeOfDay: 'morning' | 'afternoon' | 'evening') => {
-    // Placeholder: In a real app, this would update a log
     alert(`${medicineId} marked as taken for ${timeOfDay} (placeholder).`);
     setMedications(prevMeds => 
       prevMeds.map(med => 
-        med.medicineId === medicineId ? { ...med, lastTaken: new Date() } : med // Simple update
+        med.medicineId === medicineId ? { ...med, lastTaken: new Date() } : med 
       )
     );
   };
@@ -89,6 +103,17 @@ export default function PatientMedicationsPage() {
       </CardContent>
     </Card>
   );
+
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
+  if (dataLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

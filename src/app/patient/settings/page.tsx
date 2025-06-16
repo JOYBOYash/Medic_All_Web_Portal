@@ -1,17 +1,43 @@
+
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, DownloadCloud } from "lucide-react";
-import React from "react";
+import { Bell, Palette, ShieldCheck, DownloadCloud, Loader2 } from "lucide-react"; // Added Loader2
+import React, { useEffect, useState } from "react"; // Added useEffect, useState
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 export default function PatientSettingsPage() {
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
   // Placeholder states for settings
   const [medicationReminders, setMedicationReminders] = React.useState(true);
   const [appointmentAlerts, setAppointmentAlerts] = React.useState(true);
   const [darkMode, setDarkMode] = React.useState(false);
+  const [dataLoading, setDataLoading] = useState(true); // Local state for this page
+
+  useEffect(() => {
+    // This page doesn't fetch data currently
+    setPageLoading(true);
+    setDataLoading(true);
+    setTimeout(() => {
+      setDataLoading(false);
+      setPageLoading(false);
+    }, 200);
+  }, [setPageLoading]);
+
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
+   if (dataLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-8">

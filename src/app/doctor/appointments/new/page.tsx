@@ -34,7 +34,7 @@ const prescriptionSchema = z.object({
     evening: z.boolean().default(false),
   }).refine(data => data.morning || data.afternoon || data.evening, {
     message: "At least one repetition time must be selected.",
-    path: ["morning"],
+    path: ["morning"], // Path to the first checkbox for error display
   }),
   instructions: z.string().optional(),
 });
@@ -57,12 +57,12 @@ export default function NewAppointmentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedPatientId = searchParams.get("patientId");
-  const { user, userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true); // Local data loading
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
 
@@ -90,9 +90,11 @@ export default function NewAppointmentPage() {
     const fetchData = async () => {
       if (!user || !db || userProfile?.role !== 'doctor') {
         setDataLoading(false);
+        setPageLoading(false);
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
       try {
         const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
         const patientsSnapshot = await getDocs(patientsQuery);
@@ -107,31 +109,35 @@ export default function NewAppointmentPage() {
       } catch (error) {
         console.error("Error fetching data for new appointment: ", error);
         toast({ variant: "destructive", title: "Error", description: "Could not load patient or medicine data." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
       }
-      setDataLoading(false);
     };
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchData();
     } else if (!authLoading && !user) {
       setDataLoading(false);
+      setPageLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, userProfile, authLoading, toast]);
 
   useEffect(() => {
     const selectedDate = form.watch("appointmentDate");
     if (selectedDate) {
       const dayOfWeek = selectedDate.getDay();
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
+      if (dayOfWeek === 0 || dayOfWeek === 6) { // Sunday or Saturday
         setAvailableTimeSlots(["10:00", "11:00", "12:00"]);
-      } else {
+      } else { // Weekdays
         setAvailableTimeSlots(["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "14:00", "14:30", "15:00", "15:30", "16:00"]);
       }
-      form.setValue("appointmentTime", "");
+      form.setValue("appointmentTime", ""); // Reset time when date changes
     } else {
       setAvailableTimeSlots([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.watch("appointmentDate")]);
+  }, [form.watch("appointmentDate")]); // form.setValue is stable
 
 
   const onSubmit = async (data: AppointmentFormValues) => {
@@ -140,6 +146,7 @@ export default function NewAppointmentPage() {
         return;
     }
     setIsSubmittingForm(true);
+    // setPageLoading(true); // Optional: For form submissions if they take long
 
     const appointmentDateTime = new Date(data.appointmentDate);
     const [hours, minutes] = data.appointmentTime.split(':').map(Number);
@@ -171,12 +178,14 @@ export default function NewAppointmentPage() {
     } catch (error) {
         console.error("Error scheduling appointment:", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to schedule appointment. Please try again." });
+    } finally {
+        setIsSubmittingForm(false);
+        // setPageLoading(false); // Reset if set for submission
     }
-    setIsSubmittingForm(false);
   };
 
-  if (authLoading || dataLoading) {
-    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  if (authLoading || dataLoading) { // Use local dataLoading for form readiness
+    return null; // DashboardShell handles page loader
   }
 
   return (

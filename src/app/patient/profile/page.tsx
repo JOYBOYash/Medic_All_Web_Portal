@@ -1,28 +1,26 @@
+
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserProfile, Patient } from "@/types/homeoconnect"; // Assuming Patient type might have more fields patient can edit
+import { UserProfile, Patient } from "@/types/homeoconnect"; 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { UserCircle, Save, ShieldAlert, Contact } from "lucide-react";
+import { UserCircle, Save, ShieldAlert, Contact, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
-// Combine relevant fields for patient profile form
 const patientProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short"),
-  email: z.string().email("Invalid email address."), // Usually not editable by user directly
-  // photoURL: z.string().url("Invalid URL for photo.").optional().or(z.literal('')),
-  // From Patient type, if editable by patient:
-  age: z.coerce.number().min(0).max(120).optional(), // Assuming age might be updatable
+  email: z.string().email("Invalid email address."), 
+  age: z.coerce.number().min(0).max(120).optional(), 
   sex: z.enum(["male", "female", "other"]).optional(),
-  // complications might be more of a doctor's note, but patient might add/edit some summary
   symptomsSummary: z.string().optional(), 
   contactNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format.").optional().or(z.literal('')),
   address: z.string().optional(),
@@ -30,7 +28,6 @@ const patientProfileSchema = z.object({
 
 type PatientProfileFormValues = z.infer<typeof patientProfileSchema>;
 
-// Mock data - replace with actual data fetching
 const mockPatientUser: UserProfile & Partial<Patient> & { contactNumber?: string, address?: string, symptomsSummary?: string } = {
   id: "patient123",
   email: "patient.zero@example.com",
@@ -39,21 +36,22 @@ const mockPatientUser: UserProfile & Partial<Patient> & { contactNumber?: string
   photoURL: "https://placehold.co/150x150.png?text=PZ",
   age: 33,
   sex: "male",
-  complications: "Frequent headaches, fatigue (Doctor's view)", // This would be from Doctor's record
-  symptomsSummary: "I often get tension headaches, especially in the evening. Also, I feel tired most days.", // Patient's input
+  complications: "Frequent headaches, fatigue (Doctor's view)", 
+  symptomsSummary: "I often get tension headaches, especially in the evening. Also, I feel tired most days.", 
   contactNumber: "+15551234567",
   address: "456 Patient Lane, Healthville, CA",
 };
 
 export default function PatientProfilePage() {
-  const [profileData, setProfileData] = useState(mockPatientUser);
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const [profileData, setProfileData] = useState(mockPatientUser); // Replace with real data later
+  const [dataLoading, setDataLoading] = useState(true); // Local state
 
   const form = useForm<PatientProfileFormValues>({
     resolver: zodResolver(patientProfileSchema),
-    defaultValues: {
-      displayName: profileData.displayName || "",
-      email: profileData.email || "",
-      // photoURL: profileData.photoURL || "",
+    defaultValues: { // Will be updated by useEffect once real data is fetched
+      displayName: profileData.displayName || userProfile?.displayName || "",
+      email: profileData.email || userProfile?.email || "",
       age: profileData.age,
       sex: profileData.sex,
       symptomsSummary: profileData.symptomsSummary || "",
@@ -61,6 +59,31 @@ export default function PatientProfilePage() {
       address: profileData.address || "",
     },
   });
+  
+  useEffect(() => {
+    setPageLoading(true);
+    setDataLoading(true);
+    // TODO: Fetch actual patient profile data and merge with userProfile from AuthContext
+    // For now, using mock or existing AuthContext data to prefill
+    if (userProfile) {
+      form.reset({
+        displayName: userProfile.displayName || profileData.displayName || "",
+        email: userProfile.email || profileData.email || "",
+        // For other fields, you'd fetch from a patient-specific document
+        age: profileData.age, // Example, fetch this
+        sex: profileData.sex, // Example, fetch this
+        symptomsSummary: profileData.symptomsSummary, // Example
+        contactNumber: profileData.contactNumber, // Example
+        address: profileData.address, // Example
+      });
+    }
+    // Simulate fetch
+    setTimeout(() => {
+        setDataLoading(false);
+        setPageLoading(false);
+    }, 500);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile, setPageLoading]); // form.reset is stable
 
   const onSubmit = (data: PatientProfileFormValues) => {
     console.log("Patient profile update:", data);
@@ -68,6 +91,17 @@ export default function PatientProfilePage() {
     setProfileData(prev => ({ ...prev, ...data }));
     alert("Profile updated successfully (placeholder)!");
   };
+
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
+  if (dataLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -84,14 +118,13 @@ export default function PatientProfilePage() {
         <CardContent>
           <div className="flex flex-col items-center mb-6">
             <Image
-              src={profileData.photoURL || "https://placehold.co/150x150.png"}
-              alt={profileData.displayName || "Patient"}
+              src={userProfile?.photoURL || profileData.photoURL || "https://placehold.co/150x150.png"}
+              alt={userProfile?.displayName || profileData.displayName || "Patient"}
               width={150}
               height={150}
               className="rounded-full border-4 border-primary shadow-md mb-4"
               data-ai-hint="patient avatar"
             />
-            {/* Input for photoURL or file upload can be added here */}
           </div>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">

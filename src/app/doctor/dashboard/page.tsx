@@ -28,7 +28,7 @@ interface RecentPatientActivityItem {
 }
 
 export default function DoctorDashboardPage() {
-  const { user, userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
@@ -39,9 +39,11 @@ export default function DoctorDashboardPage() {
     const fetchDashboardData = async () => {
       if (!user || !db || userProfile?.role !== 'doctor') {
         setDataLoading(false);
+        setPageLoading(false);
         return;
       }
       setDataLoading(true);
+      setPageLoading(true); 
       try {
         // Fetch total patients
         const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
@@ -116,14 +118,17 @@ export default function DoctorDashboardPage() {
         } else {
           toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
         }
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
       }
-      setDataLoading(false);
     };
 
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchDashboardData();
     } else if (!authLoading && (!user || userProfile?.role !== 'doctor')) {
       setDataLoading(false);
+      setPageLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, userProfile, authLoading, toast]); 
@@ -150,8 +155,12 @@ export default function DoctorDashboardPage() {
     { label: "Manage Medicines", href: "/doctor/medicines", icon: <Pill /> },
   ];
 
+  // The main DashboardShell handles the top-level authLoading.
+  // This page's specific loading (dataLoading) can be used for finer-grained UI if needed.
+  // If authLoading is true, DashboardShell shows a full page loader.
+  // If setPageLoading(true) was called, DashboardShell also shows a loader.
   if (authLoading) {
-    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+     return null; // DashboardShell handles the primary loader
   }
 
 

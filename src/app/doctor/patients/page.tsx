@@ -16,7 +16,7 @@ import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, deleteDoc, 
 import { useToast } from "@/hooks/use-toast";
 
 export default function DoctorPatientsPage() {
-  const { user, loading: authLoading, userProfile } = useAuth();
+  const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -26,16 +26,17 @@ export default function DoctorPatientsPage() {
     const fetchPatients = async () => {
       if (!user || !db || userProfile?.role !== 'doctor') {
         setDataLoading(false);
+        setPageLoading(false);
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
       try {
         const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
         const querySnapshot = await getDocs(q);
         const fetchedPatients = querySnapshot.docs.map(doc => ({ 
           id: doc.id, 
           ...doc.data(),
-          // Ensure createdAt and updatedAt are properly handled if they are Timestamps
           createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
           updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
         } as Patient));
@@ -43,21 +44,25 @@ export default function DoctorPatientsPage() {
       } catch (error) {
         console.error("Error fetching patients: ", error);
         toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
       }
-      setDataLoading(false);
     };
 
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchPatients();
     } else if (!authLoading && !user) {
       setDataLoading(false); 
+      setPageLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, userProfile, authLoading, toast]);
 
   const filteredPatients = useMemo(() => {
     return patients.filter(patient =>
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      patient.complications.toLowerCase().includes(searchTerm.toLowerCase())
+      (patient.complications && patient.complications.toLowerCase().includes(searchTerm.toLowerCase()))
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
@@ -79,7 +84,7 @@ export default function DoctorPatientsPage() {
   };
   
   if (authLoading) {
-    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+    return null; // DashboardShell handles the primary loader
   }
 
   return (
@@ -209,3 +214,4 @@ export default function DoctorPatientsPage() {
     </div>
   );
 }
+

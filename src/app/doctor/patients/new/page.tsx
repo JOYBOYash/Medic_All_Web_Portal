@@ -7,7 +7,6 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-// Removed unused Patient import, will use PatientFormValues for form data
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -17,43 +16,50 @@ import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { PATIENTS_COLLECTION, addDoc, collection, serverTimestamp, db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import React, { useEffect } from "react"; // Added useEffect
 
 const patientFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   age: z.coerce.number().min(0, { message: "Age must be a positive number." }).max(120),
   sex: z.enum(["male", "female", "other"], { required_error: "Sex is required." }),
   complications: z.string().min(5, { message: "Please describe complications (min 5 characters)." }),
-  // authUid is intentionally NOT part of this form, as it's linked later
 });
 
 type PatientFormValues = z.infer<typeof patientFormSchema>;
 
 export default function NewPatientPage() {
   const router = useRouter();
-  const { user, loading: authLoading, userProfile } = useAuth();
+  const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
   const { toast } = useToast();
   
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
-      age: "" as unknown as number, // Initialize with empty string for controlled input, Zod coerces
+      age: "" as unknown as number,
       sex: undefined,
       complications: "",
     },
   });
+
+  useEffect(() => {
+    // This page is primarily for form entry, not heavy data loading.
+    // So, we can set page loading to false quickly.
+    setPageLoading(false);
+  }, [setPageLoading]);
+
 
   const onSubmit = async (data: PatientFormValues) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
       toast({ variant: "destructive", title: "Error", description: "You are not authorized or database is not available." });
       return;
     }
-
+    // Form submission has its own loader via form.formState.isSubmitting
     try {
       const newPatientData = {
         ...data,
         doctorId: user.uid, 
-        authUid: null, // Explicitly set to null or leave undefined; doctor doesn't set this on creation
+        authUid: null, 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -67,13 +73,8 @@ export default function NewPatientPage() {
   };
 
   if (authLoading) {
-    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    return null; // DashboardShell handles primary loader
   }
-  // This check should be handled by DashboardShell or AuthContext redirects for unauthorized roles
-  // if (!user || userProfile?.role !== 'doctor') {
-  //    router.push('/login'); 
-  //    return <div className="flex justify-center items-center h-full"><p>Unauthorized</p></div>;
-  // }
 
 
   return (
@@ -121,7 +122,7 @@ export default function NewPatientPage() {
                     <FormItem>
                       <FormLabel>Age</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 35" {...field} />
+                        <Input type="number" placeholder="e.g., 35" {...field} value={field.value === undefined || field.value === null ? '' : String(field.value)} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -172,7 +173,7 @@ export default function NewPatientPage() {
               
               <div className="flex justify-end space-x-4">
                 <Link href="/doctor/patients">
-                  <Button type="button" variant="outline">Cancel</Button>
+                  <Button type="button" variant="outline" disabled={form.formState.isSubmitting}>Cancel</Button>
                 </Link>
                 <Button type="submit" disabled={form.formState.isSubmitting || authLoading}>
                   {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}

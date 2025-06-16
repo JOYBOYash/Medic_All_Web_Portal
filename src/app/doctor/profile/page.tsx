@@ -8,29 +8,29 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ClinicDetails, UserProfile } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Save, UserCircle, Building } from "lucide-react";
+import { Save, UserCircle, Building, Loader2 } from "lucide-react"; // Added Loader2
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Image from "next/image";
-import React from "react";
+import React, { useEffect, useState } from "react"; // Added useEffect, useState
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 const userProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short."),
   email: z.string().email("Invalid email address."),
-  // photoURL: z.string().url("Invalid URL for photo.").optional().or(z.literal('')),
 });
 
 const clinicDetailsSchema = z.object({
   clinicName: z.string().min(3, "Clinic name is too short."),
   address: z.string().min(5, "Address is too short."),
-  phoneNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format."), // E.164 format
+  phoneNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format."), 
   specialization: z.string().optional(),
 });
 
 type UserProfileFormValues = z.infer<typeof userProfileSchema>;
 type ClinicDetailsFormValues = z.infer<typeof clinicDetailsSchema>;
 
-// Mock data - replace with actual data fetching
+// Mock data - replace with actual data fetching from Firestore
 const mockUser: UserProfile = {
   id: "doc123",
   email: "dr.house@example.com",
@@ -40,7 +40,7 @@ const mockUser: UserProfile = {
 };
 
 const mockClinic: ClinicDetails = {
-  id: "doc123",
+  id: "doc123", // Should be linked to doctor's UID
   clinicName: "Princeton-Plainsboro Teaching Hospital (Homeopathy Wing)",
   address: "123 Fictional St, Princeton, NJ",
   phoneNumber: "+16095550123",
@@ -48,15 +48,39 @@ const mockClinic: ClinicDetails = {
 };
 
 export default function DoctorProfilePage() {
-  const [user, setUser] = React.useState<UserProfile>(mockUser);
-  const [clinic, setClinic] = React.useState<ClinicDetails>(mockClinic);
+  const { user: authUser, userProfile: authUserProfile, loading: authLoading, setPageLoading } = useAuth();
+  
+  // These will be populated from Firestore later
+  const [user, setUser] = useState<UserProfile>(authUserProfile || mockUser); // Initialize with auth context or mock
+  const [clinic, setClinic] = useState<ClinicDetails>(mockClinic); // To be fetched
+  const [dataLoading, setDataLoading] = useState(true); // Local data loading
+
+  useEffect(() => {
+    setPageLoading(true);
+    setDataLoading(true);
+    // TODO: Fetch doctor's clinic details from Firestore using authUser.uid
+    // For now, just using mock data and ensuring form is pre-filled
+    if (authUserProfile) {
+      setUser(authUserProfile);
+      profileForm.reset({
+        displayName: authUserProfile.displayName || "",
+        email: authUserProfile.email || "",
+      });
+    }
+    // Simulate clinic data fetch
+    setTimeout(() => {
+        clinicForm.reset(mockClinic); // Assuming mockClinic represents fetched data
+        setDataLoading(false);
+        setPageLoading(false);
+    }, 500);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserProfile, setPageLoading]); // profileForm.reset, clinicForm.reset are stable
 
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
     defaultValues: {
       displayName: user.displayName || "",
       email: user.email || "",
-      // photoURL: user.photoURL || "",
     },
   });
 
@@ -79,6 +103,17 @@ export default function DoctorProfilePage() {
     alert("Clinic details updated successfully (placeholder)!");
   };
 
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
+  if (dataLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -87,7 +122,6 @@ export default function DoctorProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* User Profile Card */}
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline"><UserCircle className="h-6 w-6 text-primary" /> Your Profile</CardTitle>
@@ -103,7 +137,6 @@ export default function DoctorProfilePage() {
                 className="rounded-full border-4 border-primary shadow-md mb-4"
                 data-ai-hint="doctor profile"
               />
-              {/* Input for photoURL or file upload can be added here */}
             </div>
             <Form {...profileForm}>
               <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
@@ -130,26 +163,15 @@ export default function DoctorProfilePage() {
                     </FormItem>
                   )}
                 />
-                {/* <FormField
-                  control={profileForm.control}
-                  name="photoURL"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Photo URL (Optional)</FormLabel>
-                      <FormControl><Input placeholder="https://example.com/photo.jpg" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                /> */}
                 <Button type="submit" className="w-full" disabled={profileForm.formState.isSubmitting}>
-                  <Save className="mr-2 h-4 w-4" /> {profileForm.formState.isSubmitting ? "Saving..." : "Save Profile Changes"}
+                  {profileForm.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                  {profileForm.formState.isSubmitting ? "Saving..." : "Save Profile Changes"}
                 </Button>
               </form>
             </Form>
           </CardContent>
         </Card>
 
-        {/* Clinic Details Card */}
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline"><Building className="h-6 w-6 text-accent" /> Clinic Details</CardTitle>
@@ -203,7 +225,8 @@ export default function DoctorProfilePage() {
                   )}
                 />
                 <Button type="submit" className="w-full" disabled={clinicForm.formState.isSubmitting}>
-                  <Save className="mr-2 h-4 w-4" /> {clinicForm.formState.isSubmitting ? "Saving..." : "Save Clinic Details"}
+                   {clinicForm.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                  {clinicForm.formState.isSubmitting ? "Saving..." : "Save Clinic Details"}
                 </Button>
               </form>
             </Form>

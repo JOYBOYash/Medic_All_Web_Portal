@@ -18,24 +18,22 @@ import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { db, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation"; // Not strictly needed if DashboardShell handles redirects
+import { useRouter } from "next/navigation"; 
 
 const medicineFormSchema = z.object({
   id: z.string().optional(), 
   name: z.string().min(2, { message: "Medicine name must be at least 2 characters." }),
   description: z.string().optional(),
-  // doctorId is not in the form, it's added programmatically
 });
 
 type MedicineFormValues = z.infer<typeof medicineFormSchema>;
 
 export default function DoctorMedicinesPage() {
-  const { user, userProfile, loading: authLoading } = useAuth();
-  // const router = useRouter(); // May not be needed if DashboardShell/AuthContext handles role checks
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true); // Local data loading
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,11 +51,12 @@ export default function DoctorMedicinesPage() {
   useEffect(() => {
     const fetchMedicines = async () => {
       if (!user || !db || userProfile?.role !== 'doctor') {
-        if(!authLoading && !user) router.push('/login'); // Redirect if not logged in and not loading
-        setDataLoading(false); // Stop loading if conditions not met
+        setDataLoading(false);
+        setPageLoading(false); 
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
       try {
         const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
         const querySnapshot = await getDocs(q);
@@ -66,15 +65,19 @@ export default function DoctorMedicinesPage() {
       } catch (error) {
         console.error("Error fetching medicines: ", error);
         toast({ variant: "destructive", title: "Error", description: "Could not load medicines." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
       }
-      setDataLoading(false);
     };
 
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchMedicines();
     } else if (!authLoading && !user) {
-      setDataLoading(false); // Ensure loading stops if user is not authenticated
+      setDataLoading(false); 
+      setPageLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, userProfile, authLoading, toast]);
   
   useEffect(() => {
@@ -96,23 +99,23 @@ export default function DoctorMedicinesPage() {
         return;
     }
     setIsSubmittingForm(true);
+    // setPageLoading(true); // Consider if this is needed for dialog submission
     try {
         if (editingMedicine && editingMedicine.id) {
             const medDocRef = doc(db, MEDICINES_COLLECTION, editingMedicine.id);
-            // Ensure doctorId is not accidentally changed or removed
             const updateData = { ...data, doctorId: editingMedicine.doctorId, updatedAt: serverTimestamp() };
-            delete updateData.id; // Don't write the ID field itself into the document
+            delete updateData.id; 
             await updateDoc(medDocRef, updateData);
             setMedicines(prev => prev.map(m => m.id === editingMedicine.id ? { ...m, ...data, updatedAt: new Date() } as Medicine : m));
             toast({ title: "Success", description: `Medicine "${data.name}" updated.` });
         } else {
             const newMedicineData = {
                 ...data,
-                doctorId: user.uid, // Set doctorId for new medicine
+                doctorId: user.uid, 
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
-            delete newMedicineData.id; // Don't write form's optional ID field
+            delete newMedicineData.id; 
             const docRef = await addDoc(collection(db, MEDICINES_COLLECTION), newMedicineData);
             setMedicines(prev => [{ id: docRef.id, ...newMedicineData, createdAt: new Date(), updatedAt: new Date() } as Medicine, ...prev]);
             toast({ title: "Success", description: `Medicine "${data.name}" added.`});
@@ -123,8 +126,10 @@ export default function DoctorMedicinesPage() {
     } catch (error) {
         console.error("Error saving medicine: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to save medicine." });
+    } finally {
+      setIsSubmittingForm(false);
+      // setPageLoading(false); // Balance this with overall page feel
     }
-    setIsSubmittingForm(false);
   };
 
   const handleEdit = (medicine: Medicine) => {
@@ -138,27 +143,22 @@ export default function DoctorMedicinesPage() {
         return;
     }
     if (confirm("Are you sure you want to delete this medicine?")) {
+      // setPageLoading(true); // Consider for delete operations
       try {
-        // Optional: Add a check here to ensure the medicine being deleted belongs to this doctor,
-        // although Firestore rules should also enforce this.
-        // const medToDelete = medicines.find(m => m.id === medicineId);
-        // if (medToDelete && medToDelete.doctorId !== user.uid) {
-        //   toast({ variant: "destructive", title: "Error", description: "This medicine does not belong to you." });
-        //   return;
-        // }
         await deleteDoc(doc(db, MEDICINES_COLLECTION, medicineId));
         setMedicines(prev => prev.filter(m => m.id !== medicineId));
         toast({ title: "Success", description: "Medicine deleted." });
       } catch (error) {
         console.error("Error deleting medicine: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to delete medicine." });
-      }
+      } 
+      // finally { setPageLoading(false); }
     }
   };
   
   const openNewMedicineDialog = () => {
     setEditingMedicine(null);
-    form.reset({ name: "", description: "" }); // Reset form for new entry
+    form.reset({ name: "", description: "" }); 
     setIsDialogOpen(true);
   };
 
@@ -170,13 +170,8 @@ export default function DoctorMedicinesPage() {
   }, [medicines, searchTerm]);
 
   if (authLoading) {
-    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+    return null; // DashboardShell handles the primary loader
   }
-  // Redirects for unauthorized access should be handled by DashboardShell or AuthContext's useEffect
-  // if (!user || userProfile?.role !== 'doctor') {
-  //    // router.push('/login'); // This might cause hydration errors if called directly in render
-  //    return null; // Render nothing while redirect happens
-  // }
 
   return (
     <div className="space-y-6">
@@ -263,10 +258,10 @@ export default function DoctorMedicinesPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
-        if (isSubmittingForm && open) return; // Prevent closing while submitting
+        if (isSubmittingForm && open) return; 
         setIsDialogOpen(open);
         if (!open) {
-          setEditingMedicine(null); // Clear editing state when dialog closes
+          setEditingMedicine(null); 
           form.reset({ name: "", description: "" });
         }
       }}>
@@ -321,3 +316,4 @@ export default function DoctorMedicinesPage() {
     </div>
   );
 }
+

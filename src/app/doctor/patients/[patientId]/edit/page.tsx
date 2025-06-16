@@ -33,15 +33,15 @@ export default function EditPatientPage() {
   const params = useParams();
   const patientId = params.patientId as string;
 
-  const { user, loading: authLoading, userProfile } = useAuth();
+  const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
   const { toast } = useToast();
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true); // Local data loading for this page
   
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
-      age: "" as unknown as number, // Initialize with empty string for controlled input
+      age: "" as unknown as number,
       sex: undefined,
       complications: "",
     },
@@ -51,9 +51,11 @@ export default function EditPatientPage() {
     const fetchPatient = async () => {
       if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
         setDataLoading(false);
+        setPageLoading(false);
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         const docSnap = await getFirestoreDoc(patientDocRef);
@@ -61,7 +63,6 @@ export default function EditPatientPage() {
           const patientData = docSnap.data() as Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>; 
           form.reset({
             name: patientData.name,
-            // react-hook-form will handle converting number to string for input if needed
             age: patientData.age, 
             sex: patientData.sex,
             complications: patientData.complications,
@@ -73,25 +74,29 @@ export default function EditPatientPage() {
       } catch (error) {
         console.error("Error fetching patient for edit:", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to load patient data for editing." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
       }
-      setDataLoading(false);
     };
     
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchPatient();
     } else if (!authLoading && !user) {
        setDataLoading(false);
+       setPageLoading(false);
        router.push("/login");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, user, userProfile, authLoading, router, toast]); // form.reset is stable
+  }, [patientId, user, userProfile, authLoading, router, toast]); 
 
   const onSubmit = async (data: PatientFormValues) => {
     if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
       toast({ variant: "destructive", title: "Error", description: "You are not authorized or database is not available." });
       return;
     }
-
+    // Form submission loader is handled by form.formState.isSubmitting
+    // setPageLoading(true); // Not needed for submit, focus on form's own loader
     try {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
       const existingPatientDoc = await getFirestoreDoc(patientDocRef);
@@ -100,7 +105,6 @@ export default function EditPatientPage() {
          return;
       }
       const existingData = existingPatientDoc.data();
-
 
       await updateDoc(patientDocRef, {
         ...data, 
@@ -113,11 +117,12 @@ export default function EditPatientPage() {
     } catch (error) {
       console.error("Error updating patient:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to update patient. Please try again." });
-    }
+    } 
+    // finally { setPageLoading(false); } // Not needed for submit
   };
 
-  if (authLoading || dataLoading) {
-    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  if (authLoading || dataLoading) { // Use local dataLoading for this page's content visibility
+    return null; // DashboardShell handles primary loader if isPageLoading is true
   }
 
   return (
@@ -165,7 +170,7 @@ export default function EditPatientPage() {
                     <FormItem>
                       <FormLabel>Age</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 35" {...field} />
+                        <Input type="number" placeholder="e.g., 35" {...field} value={field.value === undefined || field.value === null ? '' : String(field.value)} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

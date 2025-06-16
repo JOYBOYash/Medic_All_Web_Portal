@@ -46,20 +46,34 @@ interface DashboardShellProps {
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, userProfile, loading, logout } = useAuth();
+  const { user, userProfile, loading: authContextLoading, logout, isPageLoading, setPageLoading } = useAuth(); // Added isPageLoading
 
   React.useEffect(() => {
-    if (!loading) {
+    // This effect handles initial auth loading and role checks
+    // The page-specific loading will be handled by individual pages setting `isPageLoading`
+    if (!authContextLoading) {
       if (!user) {
+        setPageLoading(true); // Set loading true before redirect
         router.push("/login");
       } else if (userProfile && userProfile.role !== userRole) {
+        setPageLoading(true); // Set loading true before redirect
         logout(); 
         router.push(`/login?error=role_mismatch&expected=${userRole}&actual=${userProfile.role}`);
       }
     }
-  }, [user, userProfile, loading, userRole, router, logout]);
+  }, [user, userProfile, authContextLoading, userRole, router, logout, setPageLoading]);
 
-  if (loading || !user || !userProfile) {
+  // This effect listens to pathname changes to set isPageLoading to true
+  // Pages are responsible for setting it to false when their content is loaded
+  React.useEffect(() => {
+    setPageLoading(true);
+    // The new page will set it to false once its data is loaded
+    // No explicit false setting here to avoid race conditions with page's own loading logic
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, setPageLoading]);
+
+
+  if (authContextLoading || !user || !userProfile) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -67,6 +81,8 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
     );
   }
   if (userProfile.role !== userRole) {
+    // This case should ideally be caught by the useEffect above and redirect.
+    // Showing loader while redirecting.
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -93,6 +109,9 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
+                          onClick={() => {
+                            if(pathname !== item.href) setPageLoading(true);
+                          }}
                         >
                           <Link href={item.href}>
                             {item.icon}
@@ -105,6 +124,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           isActive={item.submenu.some(sub => pathname === sub.href || pathname.startsWith(sub.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
+                          // onClick for parent of submenu might not be needed if it doesn't navigate
                         >
                           {item.icon}
                           <span className="truncate">{item.title}</span>
@@ -115,6 +135,9 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                                <SidebarMenuSubButton 
                                  asChild 
                                  isActive={pathname === subItem.href}
+                                 onClick={() => {
+                                    if(pathname !== subItem.href) setPageLoading(true);
+                                  }}
                                >
                                 <Link href={subItem.href}>
                                   {subItem.icon}
@@ -141,15 +164,21 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
         
         <SidebarInset className="flex flex-col">
            <MainHeader /> 
-           <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto">
-              {pageTitle && (
+           <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto relative"> {/* Added relative positioning */}
+              {isPageLoading && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                </div>
+              )}
+              {pageTitle && !isPageLoading && ( // Hide title if page is loading
                 <h1 className="text-2xl sm:text-3xl font-bold font-headline tracking-tight mb-6 text-primary-foreground_dark">
                   {pageTitle}
                 </h1>
               )}
-              {children}
+              {!isPageLoading && children} {/* Render children only if not page loading */}
            </main>
         </SidebarInset>
     </SidebarProvider>
   );
 }
+

@@ -1,12 +1,18 @@
 
-import React from "react"; // Added import
+"use client"; // Ensure this is a client component
+
+import React, { useEffect } from "react"; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Pill, MessageSquareHeart, FileText, User } from "lucide-react"; // Added User for profile icon
+import { CalendarDays, Pill, MessageSquareHeart, FileText, User, Loader2 } from "lucide-react"; 
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 export default function PatientDashboardPage() {
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+
+  // Mock data - replace with actual data fetching later
   const upcomingAppointment = {
     doctorName: "Dr. Eva Green",
     specialty: "General Homeopathy",
@@ -22,26 +28,34 @@ export default function PatientDashboardPage() {
   const quickAccessActions = [
     { label: "View Past Appointments", href: "/patient/appointments?filter=past", icon: <FileText /> },
     { label: "Chat with Doctor", href: "/patient/chat", icon: <MessageSquareHeart /> },
-    { label: "Update Profile", href: "/patient/profile", icon: <User /> }, // Changed icon
-    { label: "View Clinic Info", href: "/patient/clinic-info", icon: <CalendarDays /> }, // Changed icon, placeholder
+    { label: "Update Profile", href: "/patient/profile", icon: <User /> }, 
+    { label: "View Clinic Info", href: "/patient/clinic-info", icon: <CalendarDays /> }, 
   ];
 
+  useEffect(() => {
+    // This page currently uses mock data, so we can set loading to false quickly.
+    // If/when it fetches real data, this logic will be more complex.
+    setPageLoading(false); 
+  }, [setPageLoading]);
+
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Patient Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, [PatientName]!</p>
+          <p className="text-muted-foreground">Welcome back, {userProfile?.displayName || "Patient"}!</p>
         </div>
-        <Link href="/patient/appointments#schedule-new">
+        <Link href="/patient/appointments#schedule-new"> {/* This might need to point to a proper scheduling page/modal */}
             <Button>
                 <CalendarDays className="mr-2 h-4 w-4" /> Request New Appointment
             </Button>
         </Link>
       </div>
 
-      {/* Upcoming Appointment Card */}
       {upcomingAppointment && (
         <Card className="shadow-md bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30">
           <CardHeader>
@@ -64,7 +78,6 @@ export default function PatientDashboardPage() {
         </Card>
       )}
 
-      {/* Current Medications & Quick Actions */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-md">
           <CardHeader>
@@ -110,7 +123,6 @@ export default function PatientDashboardPage() {
         </Card>
       </div>
 
-      {/* Health Insights Placeholder */}
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="font-headline">Health Insights</CardTitle>
@@ -121,7 +133,6 @@ export default function PatientDashboardPage() {
            <p className="mt-4 text-muted-foreground">Track your well-being and get personalized advice.</p>
         </CardContent>
       </Card>
-
     </div>
   );
 }

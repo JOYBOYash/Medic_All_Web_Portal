@@ -1,32 +1,90 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar"; // Shadcn calendar
+import { Calendar } from "@/components/ui/calendar"; 
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import type { Appointment } from "@/types/homeoconnect";
+import type { Appointment, Patient } from "@/types/homeoconnect"; // Added Patient
 import { format } from "date-fns";
-import { PlusCircle, Search, CalendarClock, Users, MoreHorizontal, Edit, Eye, Trash2 } from "lucide-react";
+import { PlusCircle, Search, CalendarClock, Users, MoreHorizontal, Edit, Eye, Trash2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext";
+import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, collection, query, where, getDocs, Timestamp, deleteDoc, doc } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data - replace with API call (appointments for THIS doctor)
-const mockDoctorAppointments: (Appointment & { patientName: string, patientAvatar?: string })[] = [
-  { id: "apt_doc_1", patientId: "pat1", doctorId: "doc1", appointmentDate: new Date(new Date().setDate(new Date().getDate() + 2)), status: "scheduled", prescriptions: [], createdAt: new Date(), updatedAt: new Date(), patientName: "Alice Wonderland", patientAvatar: "https://placehold.co/40x40.png?text=AW" },
-  { id: "apt_doc_2", patientId: "pat2", doctorId: "doc1", appointmentDate: new Date(new Date().setDate(new Date().getDate() + 2)), status: "scheduled", prescriptions: [], createdAt: new Date(), updatedAt: new Date(), patientName: "Bob The Builder", patientAvatar: "https://placehold.co/40x40.png?text=BTB" },
-  { id: "apt_doc_3", patientId: "pat3", doctorId: "doc1", appointmentDate: new Date(new Date().setDate(new Date().getDate() - 1)), status: "completed", prescriptions: [{ medicineId: "m1", medicineName: "Arnica", quantity: "10", repetition: {morning:true, afternoon:false, evening:true} }], createdAt: new Date(), updatedAt: new Date(), patientName: "Charlie Brown", patientAvatar: "https://placehold.co/40x40.png?text=CB" },
-  { id: "apt_doc_4", patientId: "pat1", doctorId: "doc1", appointmentDate: new Date(new Date().setDate(new Date().getDate() + 5)), status: "scheduled", prescriptions: [], createdAt: new Date(), updatedAt: new Date(), patientName: "Alice Wonderland", patientAvatar: "https://placehold.co/40x40.png?text=AW" },
-];
-
+interface EnrichedAppointment extends Appointment {
+  patientName: string;
+  patientAvatar?: string;
+}
 
 export default function DoctorAppointmentsPage() {
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { toast } = useToast();
+
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  const [appointments, setAppointments] = useState(mockDoctorAppointments); // This would be fetched for the logged-in doctor
+  const [appointments, setAppointments] = useState<EnrichedAppointment[]>([]); 
+  const [dataLoading, setDataLoading] = useState(true); // Local data loading
+
+  useEffect(() => {
+    const fetchAppointmentsAndPatients = async () => {
+      if (!user || !db || userProfile?.role !== 'doctor') {
+        setDataLoading(false);
+        setPageLoading(false);
+        return;
+      }
+      setDataLoading(true);
+      setPageLoading(true);
+      try {
+        // Fetch patients first to map names to appointments
+        const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+        const patientsSnapshot = await getDocs(patientsQuery);
+        const patientsMap = new Map<string, Patient>();
+        patientsSnapshot.docs.forEach(doc => patientsMap.set(doc.id, { id: doc.id, ...doc.data() } as Patient));
+
+        // Fetch appointments
+        const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("doctorId", "==", user.uid));
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+        
+        const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => {
+          const aptData = docSnap.data() as Appointment;
+          const patient = patientsMap.get(aptData.patientId);
+          return {
+            ...aptData,
+            id: docSnap.id,
+            appointmentDate: (aptData.appointmentDate as unknown as Timestamp).toDate(),
+            createdAt: (aptData.createdAt as unknown as Timestamp).toDate(),
+            updatedAt: (aptData.updatedAt as unknown as Timestamp).toDate(),
+            nextAppointmentDate: aptData.nextAppointmentDate ? (aptData.nextAppointmentDate as unknown as Timestamp).toDate() : undefined,
+            patientName: patient?.name || "Unknown Patient",
+            patientAvatar: `https://placehold.co/40x40.png?text=${(patient?.name || 'P').charAt(0)}`,
+          } as EnrichedAppointment;
+        });
+        setAppointments(fetchedAppointments);
+
+      } catch (error) {
+        console.error("Error fetching appointments: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not load appointments." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
+      }
+    };
+
+    if (!authLoading && user && userProfile?.role === 'doctor') {
+      fetchAppointmentsAndPatients();
+    } else if (!authLoading && !user) {
+      setDataLoading(false);
+      setPageLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userProfile, authLoading, toast]);
+
 
   const filteredAppointments = useMemo(() => {
     let filtered = appointments;
@@ -39,12 +97,28 @@ export default function DoctorAppointmentsPage() {
     return filtered.sort((a,b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime());
   }, [appointments, selectedDate, searchTerm]);
 
-  const handleDeleteAppointment = (appointmentId: string) => {
+  const handleDeleteAppointment = async (appointmentId: string) => {
+    if (!user || !db || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized", description: "Not authorized." });
+        return;
+    }
     if(confirm("Are you sure you want to delete this appointment?")){
-      setAppointments(prev => prev.filter(a => a.id !== appointmentId));
-      alert(`Appointment ${appointmentId} deleted (placeholder)`);
+      // setPageLoading(true); // Optional: loader for delete action
+      try {
+        await deleteDoc(doc(db, APPOINTMENTS_COLLECTION, appointmentId));
+        setAppointments(prev => prev.filter(a => a.id !== appointmentId));
+        toast({title: "Success", description: `Appointment deleted.`});
+      } catch (error) {
+        console.error("Error deleting appointment: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to delete appointment." });
+      } 
+      // finally { setPageLoading(false); }
     }
   };
+
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
 
   return (
     <div className="space-y-6">
@@ -53,7 +127,7 @@ export default function DoctorAppointmentsPage() {
           <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Manage Appointments</h1>
           <p className="text-muted-foreground">Oversee all scheduled and past patient consultations.</p>
         </div>
-        <Link href="/doctor/appointments/new"> {/* This might need patient selection first, or be a general scheduler */}
+        <Link href="/doctor/appointments/new"> 
           <Button>
             <PlusCircle className="mr-2 h-4 w-4" /> Schedule New Appointment
           </Button>
@@ -84,7 +158,7 @@ export default function DoctorAppointmentsPage() {
                 Appointments for {selectedDate ? format(selectedDate, "PPP") : "All Dates"}
               </CardTitle>
               <CardDescription>
-                {filteredAppointments.length} appointment(s) found.
+                {dataLoading ? "Loading..." : `${filteredAppointments.length} appointment(s) found.`}
               </CardDescription>
               <div className="relative mt-2">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -94,12 +168,13 @@ export default function DoctorAppointmentsPage() {
                   className="w-full pl-10 bg-background border rounded-lg"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  disabled={!!selectedDate} // Optionally disable search when a date is selected, or filter further
                 />
               </div>
             </CardHeader>
             <CardContent>
-              {filteredAppointments.length > 0 ? (
+              {dataLoading ? (
+                 <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
+              ): filteredAppointments.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -138,7 +213,7 @@ export default function DoctorAppointmentsPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                <Link href={`/doctor/patients/${apt.patientId}/appointments/${apt.id}`}> {/* Example path */}
+                                <Link href={`/doctor/appointments/new?appointmentId=${apt.id}&patientId=${apt.patientId}`}> 
                                   <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View/Edit Details</DropdownMenuItem>
                                 </Link>
                                 <Link href={`/doctor/patients/${apt.patientId}`}>
@@ -173,3 +248,4 @@ export default function DoctorAppointmentsPage() {
     </div>
   );
 }
+

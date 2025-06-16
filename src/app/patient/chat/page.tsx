@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
@@ -6,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquareHeart, Send, Paperclip, UserCircle } from "lucide-react";
+import { MessageSquareHeart, Send, Paperclip, UserCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 interface Message {
   id: string;
@@ -18,6 +20,7 @@ interface Message {
 }
 
 export default function PatientChatPage() {
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
   const [messages, setMessages] = useState<Message[]>([
     { id: "1", text: "Hello! How can I help you today?", sender: "bot", timestamp: new Date(Date.now() - 60000 * 5), avatar: "https://placehold.co/40x40.png?text=B" },
     { id: "2", text: "I'm feeling a bit dizzy after taking the new medicine.", sender: "user", timestamp: new Date(Date.now() - 60000 * 3), avatar: "https://placehold.co/40x40.png?text=P" },
@@ -25,9 +28,21 @@ export default function PatientChatPage() {
   ]);
   const [inputText, setInputText] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [dataLoading, setDataLoading] = useState(true); // Local state
+
 
   useEffect(() => {
-    // Scroll to bottom when new messages are added
+    // Simulate initial chat load or setup
+    setPageLoading(true);
+    setDataLoading(true);
+    // In a real app, you might fetch recent messages or doctor availability here
+    setTimeout(() => {
+        setDataLoading(false);
+        setPageLoading(false);
+    }, 300); // Short delay for mock setup
+  }, [setPageLoading]);
+
+  useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
@@ -42,12 +57,11 @@ export default function PatientChatPage() {
       text: inputText,
       sender: "user",
       timestamp: new Date(),
-      avatar: "https://placehold.co/40x40.png?text=P", // Placeholder user avatar
+      avatar: userProfile?.photoURL || "https://placehold.co/40x40.png?text=P", 
     };
     setMessages([...messages, newMessage]);
     setInputText("");
 
-    // Placeholder for bot/doctor reply
     setTimeout(() => {
       const botReply: Message = {
         id: String(Date.now() + 1),
@@ -60,8 +74,19 @@ export default function PatientChatPage() {
     }, 1500);
   };
 
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
+   if (dataLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-var(--header-height,4rem)-2rem)] md:h-[calc(100vh-var(--header-height,4rem)-4rem)]"> {/* Adjust height based on header/footer */}
+    <div className="flex flex-col h-[calc(100vh-var(--header-height,4rem)-2rem)] md:h-[calc(100vh-var(--header-height,4rem)-4rem)]"> 
       <div className="mb-6">
         <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Chat with Your Doctor</h1>
         <p className="text-muted-foreground">Get quick assistance for non-urgent matters. For emergencies, please call appropriate services.</p>
@@ -110,7 +135,7 @@ export default function PatientChatPage() {
                 {msg.sender === "user" && (
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={msg.avatar} alt={msg.sender} data-ai-hint="avatar person"/>
-                     <AvatarFallback><UserCircle size={16}/></AvatarFallback>
+                     <AvatarFallback>{userProfile?.displayName?.charAt(0) || 'U'}</AvatarFallback>
                   </Avatar>
                 )}
               </div>

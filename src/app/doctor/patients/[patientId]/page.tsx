@@ -22,7 +22,7 @@ export default function PatientDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   
   const patientId = params.patientId as string;
 
@@ -34,9 +34,11 @@ export default function PatientDetailPage() {
     const fetchPatientData = async () => {
       if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
         setDataLoading(false);
+        setPageLoading(false);
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
       try {
         // Fetch patient details
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
@@ -51,15 +53,15 @@ export default function PatientDetailPage() {
            } as Patient);
         } else {
           toast({ variant: "destructive", title: "Error", description: "Patient not found or access denied." });
-          router.push("/doctor/patients"); // Redirect if patient not found or not authorized for this doctor
-          return; // Stop further execution
+          router.push("/doctor/patients"); 
+          return; 
         }
 
         // Fetch patient's appointments
         const appointmentsQuery = query(
           collection(db, APPOINTMENTS_COLLECTION),
           where("patientId", "==", patientId),
-          where("doctorId", "==", user.uid) // Ensure doctor owns these appointments
+          where("doctorId", "==", user.uid) 
         );
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
         const fetchedAppointments = appointmentsSnapshot.docs.map(doc => ({
@@ -75,16 +77,20 @@ export default function PatientDetailPage() {
       } catch (error) {
         console.error("Error fetching patient data: ", error);
         toast({ variant: "destructive", title: "Error", description: "Could not load patient data." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
       }
-      setDataLoading(false);
     };
 
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchPatientData();
     } else if (!authLoading && !user) {
       setDataLoading(false);
+      setPageLoading(false);
       router.push('/login');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId, user, userProfile, authLoading, toast, router]);
 
   const upcomingAppointments = useMemo(() => 
@@ -118,12 +124,11 @@ export default function PatientDetailPage() {
   };
 
 
-  if (authLoading || dataLoading) {
-    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  if (authLoading || dataLoading && !patient) { // Show loader if auth is loading OR data is loading AND patient isn't set yet
+    return null; // DashboardShell handles the primary loader if isPageLoading is true
   }
 
-  if (!patient) {
-    // This case should ideally be handled by the redirect in useEffect if patient not found for this doctor
+  if (!patient && !dataLoading) { // If not loading and patient is still null (e.g. after error or redirect)
     return (
         <div className="space-y-6">
             <Link href="/doctor/patients">
@@ -133,6 +138,10 @@ export default function PatientDetailPage() {
         </div>
     );
   }
+  
+  // Ensure patient is not null before rendering the main content
+  if (!patient) return null;
+
 
   return (
     <div className="space-y-8">
@@ -225,10 +234,6 @@ interface AppointmentsTableProps {
 }
 
 function AppointmentsTable({ appointments, patientName, onDelete }: AppointmentsTableProps) {
-  // The patientId is the same for all appointments here, so links to patient profile are less relevant from this specific table.
-  // Link to view/edit appointment details would be `/doctor/appointments/edit/${apt.id}` or similar.
-  // For simplicity, action menu is similar to the general appointments page for now.
-
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -269,9 +274,7 @@ function AppointmentsTable({ appointments, patientName, onDelete }: Appointments
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    {/* TODO: Link to a specific appointment edit page e.g. /doctor/appointments/edit/${apt.id} or /doctor/patients/${apt.patientId}/appointments/${apt.id}/edit */}
                     <Link href={`/doctor/appointments/new?appointmentId=${apt.id}&patientId=${apt.patientId}`}> 
-                       {/* This link could go to an edit page for the appointment if it exists */}
                       <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View/Edit Details</DropdownMenuItem>
                     </Link>
                     <DropdownMenuSeparator />

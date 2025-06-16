@@ -1,14 +1,16 @@
+
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Appointment } from "@/types/homeoconnect";
 import { format } from "date-fns";
-import { CalendarCheck, CalendarX, History, PlusCircle, Download, MessageCircle } from "lucide-react";
+import { CalendarCheck, CalendarX, History, PlusCircle, Download, MessageCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 // Mock data - replace with API call
 const mockAppointments: Appointment[] = [
@@ -21,7 +23,22 @@ const mockAppointments: Appointment[] = [
 
 
 export default function PatientAppointmentsPage() {
-  const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments); // Later, this will be fetched
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments); 
+  const [dataLoading, setDataLoading] = useState(true); // Local state for this page's data
+
+  useEffect(() => {
+    // Simulate data fetching for now
+    // In a real app, you'd fetch appointments for the logged-in patient here
+    setPageLoading(true);
+    setDataLoading(true);
+    setTimeout(() => {
+      // setAppointments(fetchedAppointments); // From API
+      setDataLoading(false);
+      setPageLoading(false);
+    }, 500); // Simulate network delay
+  }, [setPageLoading]);
+
 
   const upcomingAppointments = useMemo(() => 
     appointments.filter(apt => apt.status === 'scheduled' && new Date(apt.appointmentDate) >= new Date()).sort((a,b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime()), 
@@ -39,7 +56,7 @@ export default function PatientAppointmentsPage() {
             <CardTitle className="font-headline text-lg">
               {format(new Date(appointment.appointmentDate), "PPP 'at' p")}
             </CardTitle>
-            <CardDescription>With {appointment.doctorNotes || "Doctor"}</CardDescription> {/* Using doctorNotes as placeholder for doctor name */}
+            <CardDescription>With {appointment.doctorNotes || "Doctor"}</CardDescription> 
           </div>
           {appointment.status === 'scheduled' && new Date(appointment.appointmentDate) >= new Date() && <CalendarCheck className="h-6 w-6 text-green-500" />}
           {appointment.status === 'completed' && <History className="h-6 w-6 text-blue-500" />}
@@ -71,6 +88,17 @@ export default function PatientAppointmentsPage() {
     </Card>
   );
 
+  if (authLoading) {
+    return null; // DashboardShell handles the primary loader
+  }
+  if (dataLoading) { // Show local loader if this page is still fetching its specific data
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -78,7 +106,7 @@ export default function PatientAppointmentsPage() {
           <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">My Appointments</h1>
           <p className="text-muted-foreground">View your upcoming and past appointments.</p>
         </div>
-        <Link href="#schedule-new"> {/* This could open a modal or go to a new page */}
+        <Link href="#schedule-new"> 
           <Button>
             <PlusCircle className="mr-2 h-4 w-4" /> Request New Appointment
           </Button>
