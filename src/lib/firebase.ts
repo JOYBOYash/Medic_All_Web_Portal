@@ -6,58 +6,76 @@ import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc
 // import { getAnalytics } from "firebase/analytics"; // Optional
 
 // Your web app's Firebase configuration
-// IMPORTANT: Replace with your actual Firebase config values
+// IMPORTANT: These will be loaded from environment variables.
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "your-api-key",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "your-auth-domain",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "your-project-id",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "your-storage-bucket",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "your-messaging-sender-id",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "your-app-id",
-  // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "your-measurement-id" // Optional
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID // Optional
 };
 
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
 
-if (typeof window !== 'undefined' && !getApps().length) {
-  try {
-    app = initializeApp(firebaseConfig);
+// Ensure Firebase is initialized only on the client side and only once.
+if (typeof window !== 'undefined') {
+  if (!getApps().length) {
+    if (
+        firebaseConfig.apiKey && firebaseConfig.apiKey !== "your-api-key" &&
+        firebaseConfig.authDomain &&
+        firebaseConfig.projectId
+    ) {
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            // if (firebaseConfig.measurementId && process.env.NODE_ENV === 'production') {
+            //   getAnalytics(app);
+            // }
+        } catch (error) {
+            console.error("Firebase initialization error:", error);
+        }
+    } else {
+        console.warn("Firebase configuration is missing or incomplete. Using placeholder values. Please update your .env.local file.");
+        // Provide default placeholder config to avoid app crash if no env vars
+        const placeholderConfig = {
+            apiKey: "your-api-key",
+            authDomain: "your-auth-domain.firebaseapp.com",
+            projectId: "your-project-id",
+            storageBucket: "your-project-id.appspot.com",
+            messagingSenderId: "your-sender-id",
+            appId: "your-app-id"
+        };
+        app = initializeApp(placeholderConfig); // Initialize with placeholders
+        auth = getAuth(app);
+        db = getFirestore(app);
+    }
+  } else {
+    app = getApp();
     auth = getAuth(app);
     db = getFirestore(app);
-    // if (firebaseConfig.measurementId && process.env.NODE_ENV === 'production') { // Only init analytics in prod
-    //   getAnalytics(app);
-    // }
-  } catch (error) {
-    console.error("Firebase initialization error:", error);
-    // Fallback or error display logic can be added here
   }
-} else if (typeof window !== 'undefined') {
-  app = getApp(); // This will throw if no app is initialized, so the above catch should handle it
-  auth = getAuth(app);
-  db = getFirestore(app);
+} else {
+  // Server-side or environment where window is not defined
+  // Handle initialization differently or ensure these are not called server-side without proper checks
+  // For this app structure (client-heavy), client-side init is primary.
+  // If you need server-side Firebase Admin, that's a separate setup.
 }
 
-// Exporting as potentially undefined for server components or if init fails
+
 export { app, auth, db };
 
-// Firestore collection constants
 export const USERS_COLLECTION = "users";
 export const PATIENTS_COLLECTION = "patients";
 export const MEDICINES_COLLECTION = "medicines";
 export const APPOINTMENTS_COLLECTION = "appointments";
 
-// Helper functions for Firestore (examples)
-// You might want to move these to a separate api/service file or keep them here if simple
-
-/**
- * Creates a user profile document in Firestore.
- * @param userId The Firebase Auth user ID.
- * @param data The user profile data (email, role, displayName).
- */
 export const createUserProfileDocument = async (userId: string, data: { email: string | null, role: 'doctor' | 'patient', displayName?: string | null, photoURL?: string | null }) => {
-  if (!userId) return;
+  if (!db || !userId) return; // Check if db is initialized
   const userDocRef = doc(db, USERS_COLLECTION, userId);
   const userProfileData = {
     uid: userId,
@@ -73,12 +91,8 @@ export const createUserProfileDocument = async (userId: string, data: { email: s
   }
 };
 
-/**
- * Fetches a user profile document from Firestore.
- * @param userId The Firebase Auth user ID.
- */
 export const getUserProfileDocument = async (userId: string) => {
-  if (!userId) return null;
+  if (!db || !userId) return null; // Check if db is initialized
   const userDocRef = doc(db, USERS_COLLECTION, userId);
   try {
     const docSnap = await getDoc(userDocRef);
@@ -94,7 +108,4 @@ export const getUserProfileDocument = async (userId: string) => {
   }
 };
 
-// Add more specific CRUD functions for your collections as needed
-// e.g., addPatient, getPatientsForDoctor, addMedicine, etc.
 export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc as setFirestoreDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp };
-

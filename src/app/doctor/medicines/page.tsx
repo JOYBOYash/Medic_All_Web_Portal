@@ -18,19 +18,20 @@ import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
 import { db, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // Not strictly needed if DashboardShell handles redirects
 
 const medicineFormSchema = z.object({
   id: z.string().optional(), 
   name: z.string().min(2, { message: "Medicine name must be at least 2 characters." }),
   description: z.string().optional(),
+  // doctorId is not in the form, it's added programmatically
 });
 
 type MedicineFormValues = z.infer<typeof medicineFormSchema>;
 
 export default function DoctorMedicinesPage() {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const router = useRouter();
+  // const router = useRouter(); // May not be needed if DashboardShell/AuthContext handles role checks
   const { toast } = useToast();
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -38,6 +39,8 @@ export default function DoctorMedicinesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+
 
   const form = useForm<MedicineFormValues>({
     resolver: zodResolver(medicineFormSchema),
@@ -49,7 +52,11 @@ export default function DoctorMedicinesPage() {
 
   useEffect(() => {
     const fetchMedicines = async () => {
-      if (!user || userProfile?.role !== 'doctor') return;
+      if (!user || !db || userProfile?.role !== 'doctor') {
+        if(!authLoading && !user) router.push('/login'); // Redirect if not logged in and not loading
+        setDataLoading(false); // Stop loading if conditions not met
+        return;
+      }
       setDataLoading(true);
       try {
         const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
@@ -63,12 +70,14 @@ export default function DoctorMedicinesPage() {
       setDataLoading(false);
     };
 
-    if (user && userProfile?.role === 'doctor') {
+    if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchMedicines();
+    } else if (!authLoading && !user) {
+      setDataLoading(false); // Ensure loading stops if user is not authenticated
     }
-  }, [user, userProfile, toast]);
+  }, [user, userProfile, authLoading, toast]);
   
-  React.useEffect(() => {
+  useEffect(() => {
     if (editingMedicine) {
       form.reset({
         id: editingMedicine.id,
@@ -82,26 +91,30 @@ export default function DoctorMedicinesPage() {
 
 
   const onSubmit = async (data: MedicineFormValues) => {
-    if (!user || userProfile?.role !== 'doctor') {
-        toast({ variant: "destructive", title: "Unauthorized" });
+    if (!user || !db || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
         return;
     }
-    form.formState.isSubmitting = true;
+    setIsSubmittingForm(true);
     try {
         if (editingMedicine && editingMedicine.id) {
             const medDocRef = doc(db, MEDICINES_COLLECTION, editingMedicine.id);
-            await updateDoc(medDocRef, { ...data, updatedAt: serverTimestamp() });
-            setMedicines(prev => prev.map(m => m.id === editingMedicine.id ? { ...m, ...data, updatedAt: new Date() } as Medicine : m)); // Optimistic update
+            // Ensure doctorId is not accidentally changed or removed
+            const updateData = { ...data, doctorId: editingMedicine.doctorId, updatedAt: serverTimestamp() };
+            delete updateData.id; // Don't write the ID field itself into the document
+            await updateDoc(medDocRef, updateData);
+            setMedicines(prev => prev.map(m => m.id === editingMedicine.id ? { ...m, ...data, updatedAt: new Date() } as Medicine : m));
             toast({ title: "Success", description: `Medicine "${data.name}" updated.` });
         } else {
             const newMedicineData = {
                 ...data,
-                doctorId: user.uid,
+                doctorId: user.uid, // Set doctorId for new medicine
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
+            delete newMedicineData.id; // Don't write form's optional ID field
             const docRef = await addDoc(collection(db, MEDICINES_COLLECTION), newMedicineData);
-            setMedicines(prev => [{ id: docRef.id, ...newMedicineData, createdAt: new Date(), updatedAt: new Date() } as Medicine, ...prev]); // Optimistic update
+            setMedicines(prev => [{ id: docRef.id, ...newMedicineData, createdAt: new Date(), updatedAt: new Date() } as Medicine, ...prev]);
             toast({ title: "Success", description: `Medicine "${data.name}" added.`});
         }
         setIsDialogOpen(false);
@@ -111,7 +124,7 @@ export default function DoctorMedicinesPage() {
         console.error("Error saving medicine: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to save medicine." });
     }
-    form.formState.isSubmitting = false;
+    setIsSubmittingForm(false);
   };
 
   const handleEdit = (medicine: Medicine) => {
@@ -120,12 +133,19 @@ export default function DoctorMedicinesPage() {
   };
 
   const handleDelete = async (medicineId: string) => {
-    if (!user || userProfile?.role !== 'doctor') {
-        toast({ variant: "destructive", title: "Unauthorized" });
+    if (!user || !db || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
         return;
     }
     if (confirm("Are you sure you want to delete this medicine?")) {
       try {
+        // Optional: Add a check here to ensure the medicine being deleted belongs to this doctor,
+        // although Firestore rules should also enforce this.
+        // const medToDelete = medicines.find(m => m.id === medicineId);
+        // if (medToDelete && medToDelete.doctorId !== user.uid) {
+        //   toast({ variant: "destructive", title: "Error", description: "This medicine does not belong to you." });
+        //   return;
+        // }
         await deleteDoc(doc(db, MEDICINES_COLLECTION, medicineId));
         setMedicines(prev => prev.filter(m => m.id !== medicineId));
         toast({ title: "Success", description: "Medicine deleted." });
@@ -138,7 +158,7 @@ export default function DoctorMedicinesPage() {
   
   const openNewMedicineDialog = () => {
     setEditingMedicine(null);
-    form.reset({ name: "", description: "" });
+    form.reset({ name: "", description: "" }); // Reset form for new entry
     setIsDialogOpen(true);
   };
 
@@ -152,10 +172,11 @@ export default function DoctorMedicinesPage() {
   if (authLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
-  if (!user || userProfile?.role !== 'doctor') {
-     router.push('/login');
-     return null;
-  }
+  // Redirects for unauthorized access should be handled by DashboardShell or AuthContext's useEffect
+  // if (!user || userProfile?.role !== 'doctor') {
+  //    // router.push('/login'); // This might cause hydration errors if called directly in render
+  //    return null; // Render nothing while redirect happens
+  // }
 
   return (
     <div className="space-y-6">
@@ -241,7 +262,14 @@ export default function DoctorMedicinesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        if (isSubmittingForm && open) return; // Prevent closing while submitting
+        setIsDialogOpen(open);
+        if (!open) {
+          setEditingMedicine(null); // Clear editing state when dialog closes
+          form.reset({ name: "", description: "" });
+        }
+      }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="font-headline">{editingMedicine ? "Edit Medicine" : "Add New Medicine"}</DialogTitle>
@@ -279,11 +307,11 @@ export default function DoctorMedicinesPage() {
               />
               <DialogFooter>
                 <DialogClose asChild>
-                   <Button type="button" variant="outline">Cancel</Button>
+                   <Button type="button" variant="outline" disabled={isSubmittingForm}>Cancel</Button>
                 </DialogClose>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
-                  {form.formState.isSubmitting ? "Saving..." : (editingMedicine ? "Save Changes" : "Add Medicine")}
+                <Button type="submit" disabled={isSubmittingForm}>
+                  {isSubmittingForm ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                  {isSubmittingForm ? "Saving..." : (editingMedicine ? "Save Changes" : "Add Medicine")}
                 </Button>
               </DialogFooter>
             </form>
@@ -293,4 +321,3 @@ export default function DoctorMedicinesPage() {
     </div>
   );
 }
-

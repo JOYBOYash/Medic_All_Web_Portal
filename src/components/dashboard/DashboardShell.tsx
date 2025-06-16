@@ -46,17 +46,18 @@ interface DashboardShellProps {
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [openMobile, setOpenMobile] = React.useState(false);
   const { user, userProfile, loading, logout } = useAuth();
+  // SidebarProvider's internal state manages mobile open state.
+  // If direct control from here is needed, it would require lifting state or using SidebarContext.
 
   React.useEffect(() => {
     if (!loading) {
       if (!user) {
-        router.push("/login");
+        router.push("/login"); // Redirect to login if not authenticated
       } else if (userProfile && userProfile.role !== userRole) {
-        // If role mismatch, redirect to login with an error or to their correct dashboard
-        // Forcing logout and redirect to login for simplicity, AuthContext also has a check
-        logout();
+        // If role mismatch, logout and redirect to login with an error.
+        // AuthContext also has checks, this is an additional layer in the shell.
+        logout(); // Perform logout
         router.push(`/login?error=role_mismatch&expected=${userRole}&actual=${userProfile.role}`);
       }
     }
@@ -66,6 +67,17 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+  // Additional check to ensure profile role matches shell role, even if user object exists.
+  if (userProfile.role !== userRole) {
+    // This case should ideally be caught by the useEffect above leading to logout.
+    // If somehow it's reached, show loading or redirect.
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-2">Verifying role...</p>
       </div>
     );
   }
@@ -137,7 +149,8 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
         </Sidebar>
         
         <SidebarInset className="flex flex-col">
-           <MainHeader onMenuClick={() => setOpenMobile(!openMobile)} isMobileSidebarOpen={openMobile} />
+           {/* MainHeader now uses useSidebar hook for mobile toggle, so onMenuClick is not passed from here */}
+           <MainHeader /> 
            <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto">
               {pageTitle && (
                 <h1 className="text-2xl sm:text-3xl font-bold font-headline tracking-tight mb-6 text-primary-foreground_dark">
@@ -151,4 +164,3 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
     </SidebarProvider>
   );
 }
-

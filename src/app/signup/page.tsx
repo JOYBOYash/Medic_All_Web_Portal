@@ -6,14 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -25,7 +24,7 @@ const signupSchema = z.object({
   confirmPassword: z.string().min(6, { message: "Password must be at least 6 characters." }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
-  path: ["confirmPassword"], // path of error
+  path: ["confirmPassword"],
 });
 
 type SignupFormValues = z.infer<typeof signupSchema>;
@@ -33,14 +32,25 @@ type SignupFormValues = z.infer<typeof signupSchema>;
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
-  const { signup } = useAuth();
+  const { signup, loading: authContextLoading, user, userProfile } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     setSelectedRole(initialRole);
   }, [initialRole]);
+
+  useEffect(() => {
+    if (!authContextLoading && user && userProfile) {
+      if (userProfile.role === 'doctor') {
+        router.replace('/doctor/dashboard');
+      } else if (userProfile.role === 'patient') {
+        router.replace('/patient/dashboard');
+      }
+    }
+  }, [user, userProfile, authContextLoading, router]);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -54,12 +64,12 @@ export default function SignupPage() {
 
   const onSubmit = async (data: SignupFormValues) => {
     const result = await signup(data.email, data.password, selectedRole, data.displayName);
-    if ('user' in result) {
+    if ('user' in result && result.user) {
       toast({
         title: "Signup Successful!",
-        description: "You can now log in.",
+        description: "Redirecting you to login...", 
       });
-      router.push(`/login?role=${selectedRole}`);
+      router.push(`/login?role=${selectedRole}`); 
     } else {
       form.setError("root", { message: result.error || "An unknown error occurred during signup." });
       toast({
@@ -71,9 +81,22 @@ export default function SignupPage() {
   };
   
   const handleTabChange = (value: string) => {
-    setSelectedRole(value as 'doctor' | 'patient');
-    router.replace(`/signup?role=${value}`, { scroll: false });
-    form.reset(); // Reset form when tab changes
+    const newRole = value as 'doctor' | 'patient';
+    setSelectedRole(newRole);
+    const currentParams = new URLSearchParams(Array.from(searchParams.entries()));
+    currentParams.set('role', newRole);
+    router.replace(`${pathname}?${currentParams.toString()}`, { scroll: false });
+    form.reset();
+  }
+
+  if (authContextLoading && !user) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
+        <AppLogo />
+        <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+        <p className="mt-2 text-lg text-primary-foreground_dark">Loading...</p>
+      </div>
+    );
   }
 
   return (
@@ -87,10 +110,10 @@ export default function SignupPage() {
           <TabsTrigger value="patient">Patient Signup</TabsTrigger>
         </TabsList>
         <TabsContent value="doctor">
-          <AuthCard role="doctor" form={form} onSubmit={onSubmit} />
+          <AuthCard role="doctor" form={form} onSubmit={onSubmit} isSubmitting={form.formState.isSubmitting || authContextLoading} />
         </TabsContent>
         <TabsContent value="patient">
-          <AuthCard role="patient" form={form} onSubmit={onSubmit} />
+          <AuthCard role="patient" form={form} onSubmit={onSubmit} isSubmitting={form.formState.isSubmitting || authContextLoading} />
         </TabsContent>
       </Tabs>
        <p className="mt-4 text-center text-sm text-muted-foreground">
@@ -105,11 +128,12 @@ export default function SignupPage() {
 
 interface AuthCardProps {
   role: 'doctor' | 'patient';
-  form: any; // react-hook-form useForm return type
+  form: any; 
   onSubmit: (data: SignupFormValues) => void;
+  isSubmitting: boolean;
 }
 
-function AuthCard({ role, form, onSubmit }: AuthCardProps) {
+function AuthCard({ role, form, onSubmit, isSubmitting }: AuthCardProps) {
   return (
      <Card className="shadow-2xl">
         <CardHeader className="space-y-1 text-center">
@@ -156,7 +180,7 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      <Input type="password" placeholder="•••••••• (min. 6 characters)" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -178,9 +202,9 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
               {form.formState.errors.root && (
                 <p className="text-sm font-medium text-destructive">{form.formState.errors.root.message}</p>
               )}
-              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                {form.formState.isSubmitting ? "Creating Account..." : "Create Account"}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                {isSubmitting ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
           </Form>
@@ -188,4 +212,3 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
       </Card>
   )
 }
-

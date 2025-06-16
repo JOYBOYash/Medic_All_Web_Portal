@@ -12,15 +12,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { LogIn } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from '@/lib/firebase'; // Direct import for quick check if needed
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(1, { message: "Password is required." }), // Min 1 for presence check
+  password: z.string().min(1, { message: "Password is required." }), 
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -30,12 +29,24 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
-  const { login, userProfile, loading } = useAuth(); // loading here is context loading
+  const { login, user, userProfile, loading: authContextLoading } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     setSelectedRole(initialRole);
   }, [initialRole]);
+  
+  useEffect(() => {
+    if (!authContextLoading && user && userProfile) {
+      // If user is already logged in and profile is loaded, redirect them
+      if (userProfile.role === 'doctor') {
+        router.replace('/doctor/dashboard');
+      } else if (userProfile.role === 'patient') {
+        router.replace('/patient/dashboard');
+      }
+    }
+  }, [user, userProfile, authContextLoading, router]);
+
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -43,11 +54,9 @@ export default function LoginPage() {
       toast({
         variant: "destructive",
         title: "Access Denied",
-        description: "You are not authorized for that role's dashboard.",
+        description: "You are not authorized for that role's dashboard. Please log in with the correct account.",
       });
-      // Clear the error from URL
-      router.replace('/login', { scroll: false });
-
+      router.replace('/login', { scroll: false }); // Clear error from URL
     }
   }, [searchParams, toast, router]);
 
@@ -62,33 +71,16 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     const result = await login(data.email, data.password);
-    if ('user' in result) {
-      // AuthContext useEffect will fetch profile and redirect.
-      // No explicit redirect here as it's handled by AuthContext.
-      // If userProfile is already available due to fast context update, we can redirect sooner.
-      if (userProfile?.role === 'doctor') {
-         router.push('/doctor/dashboard');
-      } else if (userProfile?.role === 'patient') {
-         router.push('/patient/dashboard');
-      } else {
-        // This fallback might still be hit if profile takes a moment to load
-        // and the AuthContext's redirect hasn't fired yet.
-        setTimeout(() => {
-          if(auth.currentUser) {
-            // Check if the profile is loaded in context now.
-            const currentAuthContextProfile = useAuth.getState ? useAuth.getState().userProfile : null; 
-            if (currentAuthContextProfile?.role === 'doctor') {
-              router.push('/doctor/dashboard');
-            } else if (currentAuthContextProfile?.role === 'patient') {
-              router.push('/patient/dashboard');
-            } else {
-                 // Default redirect if role is still unknown, AuthContext will correct if needed.
-                 const expectedPath = selectedRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
-                 router.push(expectedPath);
-            }
-          }
-        }, 700); // Increased delay slightly
-      }
+    if ('user' in result && result.user) {
+      // AuthContext useEffect will fetch profile and redirect if not already done.
+      // This is a success, toast a general message, actual redirect handled by context.
+      toast({ title: "Login Successful", description: "Redirecting to your dashboard..."});
+      // Explicit redirect can be added here as a fallback if context redirection is slow
+      // but generally context should handle it.
+      // Example:
+      // const tempProfile = await getUserProfileDocument(result.user.uid); // this is a direct fetch, context is preferred
+      // if (tempProfile?.role === 'doctor') router.push('/doctor/dashboard');
+      // else if (tempProfile?.role === 'patient') router.push('/patient/dashboard');
     } else {
       form.setError("root", { message: result.error || "Invalid email or password." });
       toast({
@@ -100,19 +92,26 @@ export default function LoginPage() {
   };
   
   const handleTabChange = (value: string) => {
-    setSelectedRole(value as 'doctor' | 'patient');
-    router.replace(`/login?role=${value}`, { scroll: false });
-    form.reset(); // Reset form errors/values
+    const newRole = value as 'doctor' | 'patient';
+    setSelectedRole(newRole);
+    // Update URL without full page reload, preserving other query params if any
+    const currentParams = new URLSearchParams(Array.from(searchParams.entries()));
+    currentParams.set('role', newRole);
+    router.replace(`${pathname}?${currentParams.toString()}`, { scroll: false });
+    form.reset(); 
   }
 
-  if (loading && !userProfile) { // Show loading indicator if auth state is being determined and no profile yet
+  if (authContextLoading && !user) { 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
             <AppLogo />
-            <p className="mt-4 text-lg text-primary-foreground_dark">Loading...</p>
+            <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+            <p className="mt-2 text-lg text-primary-foreground_dark">Loading...</p>
         </div>
     );
   }
+  // If user is loaded and has profile, they should have been redirected by the useEffect above.
+  // This page should only render for non-logged-in users.
 
 
   return (
@@ -126,10 +125,10 @@ export default function LoginPage() {
           <TabsTrigger value="patient">Patient Login</TabsTrigger>
         </TabsList>
         <TabsContent value="doctor">
-          <AuthCard role="doctor" form={form} onSubmit={onSubmit} />
+          <AuthCard role="doctor" form={form} onSubmit={onSubmit} isSubmitting={form.formState.isSubmitting || authContextLoading} />
         </TabsContent>
         <TabsContent value="patient">
-          <AuthCard role="patient" form={form} onSubmit={onSubmit} />
+          <AuthCard role="patient" form={form} onSubmit={onSubmit} isSubmitting={form.formState.isSubmitting || authContextLoading} />
         </TabsContent>
       </Tabs>
        <p className="mt-4 text-center text-sm text-muted-foreground">
@@ -144,12 +143,12 @@ export default function LoginPage() {
 
 interface AuthCardProps {
   role: 'doctor' | 'patient';
-  form: any; // react-hook-form useForm return type
+  form: any; 
   onSubmit: (data: LoginFormValues) => void;
+  isSubmitting: boolean;
 }
 
-function AuthCard({ role, form, onSubmit }: AuthCardProps) {
-  const { loading: authLoading } = useAuth(); // This is the context loading
+function AuthCard({ role, form, onSubmit, isSubmitting }: AuthCardProps) {
   return (
      <Card className="shadow-2xl">
         <CardHeader className="space-y-1 text-center">
@@ -200,17 +199,15 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
               {form.formState.errors.root && (
                 <p className="text-sm font-medium text-destructive">{form.formState.errors.root.message}</p>
               )}
-              <Button type="submit" className="w-full" disabled={authLoading || form.formState.isSubmitting}>
-                <LogIn className="mr-2 h-4 w-4" />
-                {(authLoading || form.formState.isSubmitting) ? "Signing In..." : "Sign In"}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+                {isSubmitting ? "Signing In..." : "Sign In"}
               </Button>
             </form>
           </Form>
         </CardContent>
         <CardFooter className="flex flex-col items-center text-sm">
-           {/* Placeholder for social login or alternative sign-up options */}
         </CardFooter>
       </Card>
   )
 }
-

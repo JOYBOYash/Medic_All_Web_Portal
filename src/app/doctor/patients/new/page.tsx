@@ -7,7 +7,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Patient } from "@/types/homeoconnect";
+// Removed unused Patient import, will use PatientFormValues for form data
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -23,6 +23,7 @@ const patientFormSchema = z.object({
   age: z.coerce.number().min(0, { message: "Age must be a positive number." }).max(120),
   sex: z.enum(["male", "female", "other"], { required_error: "Sex is required." }),
   complications: z.string().min(5, { message: "Please describe complications (min 5 characters)." }),
+  // authUid is intentionally NOT part of this form, as it's linked later
 });
 
 type PatientFormValues = z.infer<typeof patientFormSchema>;
@@ -43,8 +44,8 @@ export default function NewPatientPage() {
   });
 
   const onSubmit = async (data: PatientFormValues) => {
-    if (!user || userProfile?.role !== 'doctor') {
-      toast({ variant: "destructive", title: "Error", description: "You are not authorized to perform this action." });
+    if (!user || !db || userProfile?.role !== 'doctor') {
+      toast({ variant: "destructive", title: "Error", description: "You are not authorized or database is not available." });
       return;
     }
 
@@ -52,6 +53,7 @@ export default function NewPatientPage() {
       const newPatientData = {
         ...data,
         doctorId: user.uid, 
+        authUid: null, // Explicitly set to null or leave undefined; doctor doesn't set this on creation
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -67,10 +69,11 @@ export default function NewPatientPage() {
   if (authLoading) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
-  if (!user || userProfile?.role !== 'doctor') {
-     router.push('/login'); // Or show an unauthorized message
-     return <div className="flex justify-center items-center h-full"><p>Unauthorized</p></div>;
-  }
+  // This check should be handled by DashboardShell or AuthContext redirects for unauthorized roles
+  // if (!user || userProfile?.role !== 'doctor') {
+  //    router.push('/login'); 
+  //    return <div className="flex justify-center items-center h-full"><p>Unauthorized</p></div>;
+  // }
 
 
   return (
@@ -118,7 +121,7 @@ export default function NewPatientPage() {
                     <FormItem>
                       <FormLabel>Age</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 35" {...field} />
+                        <Input type="number" placeholder="e.g., 35" {...field} onChange={e => field.onChange(parseInt(e.target.value,10))}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -183,4 +186,3 @@ export default function NewPatientPage() {
     </div>
   );
 }
-

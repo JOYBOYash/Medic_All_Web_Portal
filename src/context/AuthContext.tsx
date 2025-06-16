@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase'; // Assuming firebase.ts exports auth and db
+import { auth, db, USERS_COLLECTION } from '@/lib/firebase'; 
 import type { UserProfile } from '@/types/homeoconnect';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -17,7 +17,6 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
-// Wrapper to avoid Firebase's internal UserCredential type in public API
 interface UserCredentialWrapper {
   user: User;
 }
@@ -36,18 +35,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        // Fetch user profile from Firestore
-        const userDocRef = doc(db, "users", firebaseUser.uid);
+        const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
-          setUserProfile(userDocSnap.data() as UserProfile);
+          const profileData = userDocSnap.data() as UserProfile;
+          setUserProfile(profileData);
+          // Initial redirect after profile is loaded
+          if (pathname === '/login' || pathname === '/signup' || pathname === '/') {
+            if (profileData.role === 'doctor') router.push('/doctor/dashboard');
+            else if (profileData.role === 'patient') router.push('/patient/dashboard');
+          }
         } else {
-          // This case should ideally not happen if signup creates a profile
           console.error("No user profile found in Firestore for UID:", firebaseUser.uid);
+          // This case can happen if signup process was interrupted
+          // Or if a user exists in Auth but not in Firestore users collection.
+          // For robustness, consider creating a profile here if it's missing, or logging out.
           setUserProfile(null); 
-          // Potentially logout or redirect if profile is mandatory
-          await signOut(auth);
-          setUser(null);
+          // await signOut(auth); // Decide on handling this: logout or attempt profile creation
+          // setUser(null);
         }
       } else {
         setUser(null);
@@ -57,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [pathname, router]);
 
   useEffect(() => {
     if (!loading && !user && (pathname.startsWith('/doctor') || pathname.startsWith('/patient'))) {
@@ -65,8 +70,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     if (!loading && user && userProfile) {
       if (pathname.startsWith('/doctor') && userProfile.role !== 'doctor') {
+        logout(); // Log out user with incorrect role for dashboard
         router.push('/login?error=role_mismatch');
       } else if (pathname.startsWith('/patient') && userProfile.role !== 'patient') {
+        logout(); // Log out user with incorrect role for dashboard
         router.push('/login?error=role_mismatch');
       }
     }
@@ -76,12 +83,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting user and profile
+      // onAuthStateChanged will handle setting user and profile, and subsequent redirection
       return { user: userCredential.user };
     } catch (error: any) {
       console.error("Login error:", error);
       setLoading(false);
-      return { error: error.message || "Failed to login." };
+      let errorMessage = "Failed to login. Please check your credentials.";
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        errorMessage = "Invalid email or password.";
+      }
+      return { error: errorMessage };
     }
   };
 
@@ -91,42 +102,48 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      // Create user profile in Firestore
-      const userDocRef = doc(db, "users", firebaseUser.uid);
+      const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
       const newUserProfile: UserProfile = {
         id: firebaseUser.uid,
         email: firebaseUser.email,
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
         photoURL: firebaseUser.photoURL,
-        // createdAt: serverTimestamp() // Requires an import
       };
       await setDoc(userDocRef, { ...newUserProfile, createdAt: serverTimestamp() });
       
-      setUser(firebaseUser);
-      setUserProfile(newUserProfile);
-      setLoading(false);
+      // setUser(firebaseUser); // onAuthStateChanged will handle this
+      // setUserProfile(newUserProfile); // onAuthStateChanged will handle this
+      // setLoading(false); // onAuthStateChanged will handle this
       return { user: firebaseUser };
     } catch (error: any) {
       console.error("Signup error:", error);
       setLoading(false);
-      return { error: error.message || "Failed to signup." };
+      let errorMessage = "Failed to signup. Please try again.";
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = "This email address is already in use.";
+      }
+      return { error: errorMessage };
     }
   };
 
   const logout = async () => {
-    setLoading(true);
+    // setLoading(true); // Not strictly needed here as onAuthStateChanged will set loading
     try {
       await signOut(auth);
       setUser(null);
       setUserProfile(null);
-      router.push('/login');
+      router.push('/login'); // Ensure redirection to login after logout
     } catch (error) {
       console.error("Logout error:", error);
-    } finally {
-        setLoading(false);
-    }
+    } 
+    // finally { setLoading(false); } // onAuthStateChanged handles this
   };
+  
+  // Expose a way to update userProfile in context if it's changed elsewhere (e.g. profile page)
+  // const updateProfileInContext = (profile: UserProfile) => {
+  //   setUserProfile(profile);
+  // }
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading, login, signup, logout }}>
@@ -135,11 +152,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useAuth = (): AuthContextType => {
+// Export useAuth hook with explicit state type for easier consumption if needed
+export const useAuth = (): AuthContextType & { getState?: () => { user: User | null, userProfile: UserProfile | null, loading: boolean } } => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
+  // Add getState for specific scenarios if direct state access is needed outside of reactive updates
+  // (though generally prefer reactive updates through useEffect)
+  // const getState = () => ({ user: context.user, userProfile: context.userProfile, loading: context.loading });
+  // return { ...context, getState };
   return context;
 };
-

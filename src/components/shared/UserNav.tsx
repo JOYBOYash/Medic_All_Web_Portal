@@ -23,6 +23,7 @@ export function UserNav() {
 
   const handleLogout = async () => {
     await logout();
+    // router.push('/login') is handled by AuthContext or DashboardShell now
   };
 
   const getProfileLink = () => {
@@ -36,7 +37,7 @@ export function UserNav() {
 
 
   if (loading) {
-    return <Skeleton className="h-10 w-10 rounded-full" />;
+    return <Skeleton className="h-10 w-10 rounded-full bg-muted" />;
   }
 
   if (!user || !userProfile) {
@@ -51,9 +52,9 @@ export function UserNav() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-          <Avatar className="h-10 w-10">
+          <Avatar className="h-10 w-10 border">
             <AvatarImage src={userProfile.photoURL || undefined} alt={userProfile.displayName || "User"} data-ai-hint="profile avatar" />
-            <AvatarFallback>
+            <AvatarFallback className="bg-muted text-muted-foreground">
               {userProfile.displayName ? userProfile.displayName.charAt(0).toUpperCase() : <UserCircle />}
             </AvatarFallback>
           </Avatar>
@@ -64,7 +65,7 @@ export function UserNav() {
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">{userProfile.displayName || "User"}</p>
             <p className="text-xs leading-none text-muted-foreground">
-              {userProfile.email}
+              {userProfile.email} ({userProfile.role})
             </p>
           </div>
         </DropdownMenuLabel>
@@ -92,4 +93,3 @@ export function UserNav() {
     </DropdownMenu>
   );
 }
-
