@@ -24,7 +24,7 @@ interface RecentPatientActivityItem {
   name: string;
   activity: string;
   img: string;
-  createdAt?: Date; // For sorting, if needed elsewhere
+  createdAt?: Date; 
 }
 
 export default function DoctorDashboardPage() {
@@ -111,7 +111,7 @@ export default function DoctorDashboardPage() {
             variant: "destructive",
             title: "Database Index Required",
             description: "A database index is needed for dashboard queries. Please check the Firebase console (or your browser's developer console for the error message, it often includes a direct link) to create the required index. Dashboard data may be incomplete or unavailable until the index is built.",
-            duration: 20000 // Increased duration for visibility
+            duration: 20000 
           });
         } else {
           toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
@@ -126,7 +126,7 @@ export default function DoctorDashboardPage() {
       setDataLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, authLoading, toast]); // db is stable
+  }, [user, userProfile, authLoading, toast]); 
 
   const statsToDisplay = useMemo(() => {
     if (dataLoading || !dashboardStats) {
@@ -234,3 +234,4 @@ export default function DoctorDashboardPage() {
     </div>
   );
 }
+
