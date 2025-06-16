@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true); // Set loading true at the start of auth state change processing
+      setLoading(true); 
       if (firebaseUser) {
         setUser(firebaseUser);
         const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
@@ -42,31 +42,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (userDocSnap.exists()) {
             const profileData = userDocSnap.data() as UserProfile;
             setUserProfile(profileData);
-            // Redirect if user is on login/signup or root page
             if ((pathname === '/login' || pathname === '/signup' || pathname === '/') && profileData.role) {
               if (profileData.role === 'doctor') router.replace('/doctor/dashboard');
               else if (profileData.role === 'patient') router.replace('/patient/dashboard');
             }
+            setLoading(false); // Profile fetched, set loading false
           } else {
-            console.error("No user profile found in Firestore for UID:", firebaseUser.uid);
-            // If profile doesn't exist, sign out the user to prevent inconsistent state.
-            // This will re-trigger onAuthStateChanged with a null user.
+            // Firestore profile document does not exist
+            console.warn("No user profile found in Firestore for UID:", firebaseUser.uid); // Changed from console.error
             await signOut(auth); 
-            // No need to set user/profile to null here, onAuthStateChanged will handle it
-            // setLoading(false) will also be handled by the re-triggered call
-            return; // Exit early as we are signing out
+            // onAuthStateChanged will be triggered again with firebaseUser = null, 
+            // which will then set user/userProfile to null and setLoading(false)
+            return; // Exit early as we are signing out, setLoading(false) will happen in the next cycle.
           }
         } catch (error) {
           console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
           await signOut(auth);
-          // setLoading(false) will be handled by the re-triggered call
+          // onAuthStateChanged will handle setLoading(false) in the next cycle.
           return; // Exit early
         }
       } else {
         setUser(null);
         setUserProfile(null);
+        setLoading(false); // No user, set loading false
       }
-      setLoading(false); // Set loading to false after all processing for this auth state change is done
     });
 
     return () => unsubscribe();
@@ -117,11 +116,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email: firebaseUser.email,
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
-        photoURL: firebaseUser.photoURL || null, // Ensure photoURL is null if not present
+        photoURL: firebaseUser.photoURL || null, 
       };
       await setDoc(userDocRef, { ...newUserProfile, createdAt: serverTimestamp() });
       
-      // onAuthStateChanged will handle setting user, profile, and redirect. setLoading(false) called by onAuthStateChanged.
       return { user: firebaseUser };
     } catch (error: any) {
       setLoading(false); 
@@ -129,12 +127,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = "This email address is already in use.";
-        // We don't console.error here because it's a handled case (redirect to login)
+        // No console.error for this handled case
       } else if (error.code === 'auth/weak-password') {
         errorMessage = "Password is too weak. Please choose a stronger password.";
         console.error("Signup error (weak-password):", error);
       } else {
-        // For other errors, log them
         console.error("Signup error:", error);
       }
       return { error: errorMessage, errorCode: error.code };
@@ -142,12 +139,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
-    // setLoading(true); // Optional: can make UI seem more responsive to logout click
     try {
       await signOut(auth);
-      // onAuthStateChanged will set user/profile to null and loading to false.
-      // It will also redirect to /login if not already there due to the other useEffect.
-      // Forcing a clear navigation:
       router.push('/login'); 
     } catch (error) {
       console.error("Logout error:", error);
@@ -173,4 +166,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-
