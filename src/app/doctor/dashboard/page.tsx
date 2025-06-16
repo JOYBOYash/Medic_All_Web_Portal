@@ -1,3 +1,5 @@
+
+import React from "react"; // Added import
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Users, CalendarClock, Pill } from "lucide-react";
@@ -13,7 +15,7 @@ export default function DoctorDashboardPage() {
 
   const quickActions = [
     { label: "Add New Patient", href: "/doctor/patients/new", icon: <PlusCircle /> },
-    { label: "Schedule Appointment", href: "/doctor/appointments/new", icon: <CalendarClock /> }, // This might need patient selection first
+    { label: "Schedule Appointment", href: "/doctor/appointments/new", icon: <CalendarClock /> },
     { label: "Manage Medicines", href: "/doctor/medicines", icon: <Pill /> },
   ];
 

@@ -1,6 +1,8 @@
+
+import React from "react"; // Added import
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Pill, MessageSquareHeart, FileText } from "lucide-react";
+import { CalendarDays, Pill, MessageSquareHeart, FileText, User } from "lucide-react"; // Added User for profile icon
 import Link from "next/link";
 import Image from "next/image";
 
@@ -16,6 +18,14 @@ export default function PatientDashboardPage() {
     { name: "Arnica Montana 30C", dosage: "5 pills, 3 times a day", nextRefill: "In 5 days" },
     { name: "Nux Vomica 200CH", dosage: "3 pills, after dinner", nextRefill: "In 12 days" },
   ];
+
+  const quickAccessActions = [
+    { label: "View Past Appointments", href: "/patient/appointments?filter=past", icon: <FileText /> },
+    { label: "Chat with Doctor", href: "/patient/chat", icon: <MessageSquareHeart /> },
+    { label: "Update Profile", href: "/patient/profile", icon: <User /> }, // Changed icon
+    { label: "View Clinic Info", href: "/patient/clinic-info", icon: <CalendarDays /> }, // Changed icon, placeholder
+  ];
+
 
   return (
     <div className="space-y-8">
@@ -88,12 +98,7 @@ export default function PatientDashboardPage() {
             <CardDescription>Navigate to important sections easily.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { label: "View Past Appointments", href: "/patient/appointments?filter=past", icon: <FileText /> },
-              { label: "Chat with Doctor", href: "/patient/chat", icon: <MessageSquareHeart /> },
-              { label: "Update Profile", href: "/patient/profile", icon: <MessageSquareHeart /> },
-              { label: "View Clinic Info", href: "/patient/clinic-info", icon: <MessageSquareHeart /> }, // Placeholder
-            ].map((action) => (
+            {quickAccessActions.map((action) => (
                <Link href={action.href} key={action.label}>
                 <Button variant="outline" className="w-full justify-start gap-2">
                   {action.icon && React.cloneElement(action.icon, {className: "h-4 w-4"})}
