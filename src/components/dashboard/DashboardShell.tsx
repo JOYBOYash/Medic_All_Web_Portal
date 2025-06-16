@@ -45,29 +45,19 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
+  const router = useRouter(); // Not directly used for redirect here, AuthContext handles it.
   const { user, userProfile, loading: authContextLoading, logout, isPageLoading, setPageLoading } = useAuth();
 
   React.useEffect(() => {
-    // This effect handles initial auth loading and role checks for DashboardShell protected routes
-    if (!authContextLoading) { // Only proceed if the auth context itself isn't loading user/profile
-      if (!user) {
-        setPageLoading(true); // Indicate loading before redirect
-        router.push("/login");
-      } else if (userProfile && userProfile.role !== userRole) {
-        setPageLoading(true); // Indicate loading before redirect
-        logout(); // This will also trigger onAuthStateChanged
-        router.push(`/login?error=role_mismatch&expected=${userRole}&actual=${userProfile.role}`);
-      }
-      // If user exists and role matches, the page itself will turn off the loader.
+    // This effect triggers the page loader whenever the path changes within the shell.
+    // The newly loaded page component is then responsible for calling setPageLoading(false).
+    // Only set page loading if auth is resolved and user role matches, to avoid premature loader activation.
+    if (!authContextLoading && user && userProfile && userProfile.role === userRole) {
+      setPageLoading(true);
     }
-  }, [user, userProfile, authContextLoading, userRole, router, logout, setPageLoading]);
-
-  // This effect triggers the page loader whenever the path changes within the shell.
-  // The newly loaded page component is then responsible for calling setPageLoading(false).
-  React.useEffect(() => {
-    setPageLoading(true);
-  }, [pathname, setPageLoading]); // setPageLoading is stable, effectively [pathname]
+  // `setPageLoading` is stable. Dependencies are to ensure conditions are met.
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, [pathname, authContextLoading, user, userProfile, userRole]);
 
 
   if (authContextLoading || !user || !userProfile) {
@@ -78,9 +68,10 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
       </div>
     );
   }
-  // This secondary check is mostly for role mismatch, which should be caught by the useEffect above.
-  // If somehow it's reached, show loader while redirect happens.
+  
   if (userProfile.role !== userRole) {
+    // AuthContext's route protection useEffect is responsible for redirecting on role mismatch.
+    // This block ensures a loader is shown while that redirect is processed.
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -107,9 +98,6 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
-                          onClick={() => {
-                            // setPageLoading(true) is handled by pathname effect
-                          }}
                         >
                           <Link href={item.href}>
                             {item.icon}
@@ -132,9 +120,6 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                                <SidebarMenuSubButton 
                                  asChild 
                                  isActive={pathname === subItem.href}
-                                 onClick={() => {
-                                    // setPageLoading(true) is handled by pathname effect
-                                  }}
                                >
                                 <Link href={subItem.href}>
                                   {subItem.icon}
@@ -172,11 +157,15 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                   {pageTitle}
                 </h1>
               )}
-              {!isPageLoading && children}
+              {/* Render children only if not page loading, OR if page loading and auth context is also done 
+                  This prevents flash of old content if isPageLoading is briefly false then true on nav.
+                  The primary guard is that individual pages should return null if their specific data is loading.
+              */}
+              {(!isPageLoading || (isPageLoading && !authContextLoading)) && children}
            </main>
         </SidebarInset>
     </SidebarProvider>
   );
 }
-
+    
     
