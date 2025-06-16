@@ -110,8 +110,8 @@ export default function DoctorDashboardPage() {
           toast({ 
             variant: "destructive", 
             title: "Database Index Required", 
-            description: "A database index is needed for dashboard queries. Please check the Firebase console (or your browser's developer console for the error message) for a link to create it. Dashboard data may be incomplete or unavailable until the index is built.",
-            duration: 15000 
+            description: "A database index is needed for dashboard queries. Please check the Firebase console (or your browser's developer console for the error message, it often includes a direct link) to create the required index. Dashboard data may be incomplete or unavailable until the index is built.",
+            duration: 20000 // Increased duration for visibility
           });
         } else {
           toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
@@ -234,3 +234,6 @@ export default function DoctorDashboardPage() {
     </div>
   );
 }
+
+
+    
