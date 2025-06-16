@@ -37,7 +37,7 @@ export default function NewPatientPage() {
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
-      age: undefined, 
+      age: "" as unknown as number, // Initialize with empty string for controlled input, Zod coerces
       sex: undefined,
       complications: "",
     },
@@ -121,7 +121,7 @@ export default function NewPatientPage() {
                     <FormItem>
                       <FormLabel>Age</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 35" {...field} onChange={e => field.onChange(parseInt(e.target.value,10))}/>
+                        <Input type="number" placeholder="e.g., 35" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

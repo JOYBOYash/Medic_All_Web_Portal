@@ -41,7 +41,7 @@ export default function EditPatientPage() {
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
-      age: undefined, 
+      age: "" as unknown as number, // Initialize with empty string for controlled input
       sex: undefined,
       complications: "",
     },
@@ -58,10 +58,11 @@ export default function EditPatientPage() {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         const docSnap = await getFirestoreDoc(patientDocRef);
         if (docSnap.exists() && docSnap.data().doctorId === user.uid) {
-          const patientData = docSnap.data() as Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>; // Exclude non-form fields
+          const patientData = docSnap.data() as Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>; 
           form.reset({
             name: patientData.name,
-            age: patientData.age,
+            // react-hook-form will handle converting number to string for input if needed
+            age: patientData.age, 
             sex: patientData.sex,
             complications: patientData.complications,
           });
@@ -93,8 +94,6 @@ export default function EditPatientPage() {
 
     try {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-      // Ensure doctorId is not changed during update, keep the original doctorId
-      // Also, ensure authUid is preserved if it exists.
       const existingPatientDoc = await getFirestoreDoc(patientDocRef);
       if (!existingPatientDoc.exists() || existingPatientDoc.data()?.doctorId !== user.uid) {
          toast({ variant: "destructive", title: "Error", description: "Patient not found or update not permitted." });
@@ -104,14 +103,13 @@ export default function EditPatientPage() {
 
 
       await updateDoc(patientDocRef, {
-        ...data, // The new form data
-        doctorId: existingData.doctorId, // Preserve original doctorId
-        authUid: existingData.authUid !== undefined ? existingData.authUid : null, // Preserve authUid
+        ...data, 
+        doctorId: existingData.doctorId, 
+        authUid: existingData.authUid !== undefined ? existingData.authUid : null, 
         updatedAt: serverTimestamp(),
-        // createdAt is not updated
       });
       toast({ title: "Success", description: `Patient "${data.name}" updated successfully.` });
-      router.push(`/doctor/patients/${patientId}`); // Navigate back to patient detail page
+      router.push(`/doctor/patients/${patientId}`); 
     } catch (error) {
       console.error("Error updating patient:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to update patient. Please try again." });
@@ -167,7 +165,7 @@ export default function EditPatientPage() {
                     <FormItem>
                       <FormLabel>Age</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="e.g., 35" {...field} onChange={e => field.onChange(parseInt(e.target.value,10))}/>
+                        <Input type="number" placeholder="e.g., 35" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -179,7 +177,7 @@ export default function EditPatientPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Sex</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}> {/* Ensure value is passed for controlled component */}
+                      <Select onValueChange={field.onChange} value={field.value}> 
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select sex" />
