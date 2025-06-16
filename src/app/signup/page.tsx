@@ -67,9 +67,15 @@ export default function SignupPage() {
     if ('user' in result && result.user) {
       toast({
         title: "Signup Successful!",
-        description: "Redirecting you to login...", 
+        description: "Redirecting you to login...",
       });
-      router.push(`/login?role=${selectedRole}`); 
+      router.push(`/login?role=${selectedRole}`);
+    } else if (result.errorCode === 'auth/email-already-in-use') {
+      toast({
+        title: "Account Exists",
+        description: "This email is already registered. Redirecting to login...",
+      });
+      router.push(`/login?role=${selectedRole}&email=${encodeURIComponent(data.email)}`);
     } else {
       form.setError("root", { message: result.error || "An unknown error occurred during signup." });
       toast({

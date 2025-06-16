@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { LogIn, Loader2 } from "lucide-react";
@@ -27,7 +27,9 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname(); // Get current pathname
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
+  const emailFromQuery = searchParams.get("email");
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
   const { login, user, userProfile, loading: authContextLoading } = useAuth();
   const { toast } = useToast();
@@ -38,7 +40,6 @@ export default function LoginPage() {
   
   useEffect(() => {
     if (!authContextLoading && user && userProfile) {
-      // If user is already logged in and profile is loaded, redirect them
       if (userProfile.role === 'doctor') {
         router.replace('/doctor/dashboard');
       } else if (userProfile.role === 'patient') {
@@ -56,31 +57,34 @@ export default function LoginPage() {
         title: "Access Denied",
         description: "You are not authorized for that role's dashboard. Please log in with the correct account.",
       });
-      router.replace('/login', { scroll: false }); // Clear error from URL
+      // Use router.replace with only the pathname to remove all query params
+      router.replace(pathname, { scroll: false }); 
     }
-  }, [searchParams, toast, router]);
+  }, [searchParams, toast, router, pathname]);
 
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      email: emailFromQuery || "",
       password: "",
     },
   });
 
+  // Update email field if emailFromQuery changes and form is initialized
+  useEffect(() => {
+    if (emailFromQuery) {
+      form.setValue("email", emailFromQuery);
+    }
+  // form.setValue is stable, but searchParams is the trigger
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailFromQuery]);
+
+
   const onSubmit = async (data: LoginFormValues) => {
     const result = await login(data.email, data.password);
     if ('user' in result && result.user) {
-      // AuthContext useEffect will fetch profile and redirect if not already done.
-      // This is a success, toast a general message, actual redirect handled by context.
       toast({ title: "Login Successful", description: "Redirecting to your dashboard..."});
-      // Explicit redirect can be added here as a fallback if context redirection is slow
-      // but generally context should handle it.
-      // Example:
-      // const tempProfile = await getUserProfileDocument(result.user.uid); // this is a direct fetch, context is preferred
-      // if (tempProfile?.role === 'doctor') router.push('/doctor/dashboard');
-      // else if (tempProfile?.role === 'patient') router.push('/patient/dashboard');
     } else {
       form.setError("root", { message: result.error || "Invalid email or password." });
       toast({
@@ -94,11 +98,17 @@ export default function LoginPage() {
   const handleTabChange = (value: string) => {
     const newRole = value as 'doctor' | 'patient';
     setSelectedRole(newRole);
-    // Update URL without full page reload, preserving other query params if any
     const currentParams = new URLSearchParams(Array.from(searchParams.entries()));
     currentParams.set('role', newRole);
+    // Preserve email if it exists from signup redirect
+    if (!currentParams.has('email') && emailFromQuery) {
+        currentParams.set('email', emailFromQuery);
+    } else if (!emailFromQuery && currentParams.has('email')) {
+        // If emailFromQuery is cleared but still in params from old state, remove it.
+        // This might not be strictly necessary if navigation always sets it or clears it.
+    }
     router.replace(`${pathname}?${currentParams.toString()}`, { scroll: false });
-    form.reset(); 
+    form.reset({ email: emailFromQuery || "", password: "" }); // Reset form, preserving email if from query
   }
 
   if (authContextLoading && !user) { 
@@ -110,9 +120,6 @@ export default function LoginPage() {
         </div>
     );
   }
-  // If user is loaded and has profile, they should have been redirected by the useEffect above.
-  // This page should only render for non-logged-in users.
-
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
