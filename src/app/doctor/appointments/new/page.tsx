@@ -18,15 +18,15 @@ import { useForm, useFieldArray } from "react-hook-form";
 import * as z from "zod";
 import { format as formatDateFn } from "date-fns";
 import { ArrowLeft, CalendarIcon, PlusCircle, Save, Trash2, Clock, Users, Loader2 } from "lucide-react";
-import { Appointment, Patient, Medicine, PainSeverity, painSeverityOptions, commonSymptomsOptions } from "@/types/homeoconnect"; // Removed PrescribedMedicine as it's part of Appointment
+import { Appointment, Patient, Medicine, PainSeverity, painSeverityOptions, commonSymptomsOptions } from "@/types/homeoconnect";
 import { useAuth } from "@/context/AuthContext";
 import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, serverTimestamp, Timestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 
 
 const prescriptionSchema = z.object({
-  medicineId: z.string().min(1, "Medicine is required."), 
-  medicineName: z.string(), 
+  medicineId: z.string().min(1, "Medicine is required."),
+  medicineName: z.string(),
   quantity: z.string().min(1, "Quantity is required."),
   repetition: z.object({
     morning: z.boolean().default(false),
@@ -34,22 +34,21 @@ const prescriptionSchema = z.object({
     evening: z.boolean().default(false),
   }).refine(data => data.morning || data.afternoon || data.evening, {
     message: "At least one repetition time must be selected.",
-    path: ["morning"], 
+    path: ["morning"],
   }),
   instructions: z.string().optional(),
 });
 
 const appointmentFormSchema = z.object({
-  patientId: z.string().min(1, "Patient is required."), 
+  patientId: z.string().min(1, "Patient is required."),
   appointmentDate: z.date({ required_error: "Appointment date is required." }),
   appointmentTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
   patientRemarks: z.string().optional(),
   doctorNotes: z.string().optional(),
   painSeverity: z.enum(["none", "mild", "moderate", "severe", "excruciating"]).optional(),
-  symptoms: z.array(z.string()).optional(), 
+  symptoms: z.array(z.string()).optional(),
   prescriptions: z.array(prescriptionSchema).optional(),
   nextAppointmentDate: z.date().optional(),
-  // doctorId is not in form, added programmatically
 });
 
 type AppointmentFormValues = z.infer<typeof appointmentFormSchema>;
@@ -117,22 +116,22 @@ export default function NewAppointmentPage() {
       setDataLoading(false);
     }
   }, [user, userProfile, authLoading, toast]);
-  
+
   useEffect(() => {
     const selectedDate = form.watch("appointmentDate");
     if (selectedDate) {
-      const dayOfWeek = selectedDate.getDay(); 
-      if (dayOfWeek === 0 || dayOfWeek === 6) { 
+      const dayOfWeek = selectedDate.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
         setAvailableTimeSlots(["10:00", "11:00", "12:00"]);
-      } else { 
+      } else {
         setAvailableTimeSlots(["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "14:00", "14:30", "15:00", "15:30", "16:00"]);
       }
-      form.setValue("appointmentTime", ""); 
+      form.setValue("appointmentTime", "");
     } else {
       setAvailableTimeSlots([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.watch("appointmentDate")]); // form is stable, watch is the dependency
+  }, [form.watch("appointmentDate")]);
 
 
   const onSubmit = async (data: AppointmentFormValues) => {
@@ -144,16 +143,15 @@ export default function NewAppointmentPage() {
 
     const appointmentDateTime = new Date(data.appointmentDate);
     const [hours, minutes] = data.appointmentTime.split(':').map(Number);
-    appointmentDateTime.setHours(hours, minutes, 0, 0); // Set seconds and ms to 0
+    appointmentDateTime.setHours(hours, minutes, 0, 0);
 
-    // Omit id, createdAt, updatedAt for new document
     const finalData: Omit<Appointment, 'id' | 'createdAt' | 'updatedAt'> = {
       patientId: data.patientId,
-      doctorId: user.uid, // Add doctorId
+      doctorId: user.uid,
       appointmentDate: Timestamp.fromDate(appointmentDateTime),
       patientRemarks: data.patientRemarks,
       doctorNotes: data.doctorNotes,
-      painSeverity: data.painSeverity as PainSeverity | undefined, // Cast for safety
+      painSeverity: data.painSeverity as PainSeverity | undefined,
       symptoms: data.symptoms,
       prescriptions: data.prescriptions?.map(p => ({
         ...p,
@@ -180,11 +178,6 @@ export default function NewAppointmentPage() {
   if (authLoading || dataLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
-  // Role/auth checks are primarily handled by DashboardShell/AuthContext
-  // if (!user || userProfile?.role !== 'doctor') {
-  //    // router.push('/login'); // Avoid direct push in render phase
-  //    return null;
-  // }
 
   return (
     <div className="space-y-6">
@@ -213,9 +206,9 @@ export default function NewAppointmentPage() {
                       <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!preselectedPatientId || patients.length === 0}>
                         <FormControl><SelectTrigger><SelectValue placeholder={patients.length === 0 ? "No patients found" : "Select patient"} /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {patients.length > 0 ? 
+                          {patients.length > 0 ?
                             patients.map(p => <SelectItem key={p.id} value={p.id}>{p.name} (Age: {p.age})</SelectItem>) :
-                            <SelectItem value="" disabled>No patients available for this doctor</SelectItem>
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">No patients available for this doctor</div>
                           }
                         </SelectContent>
                       </Select>
@@ -255,9 +248,9 @@ export default function NewAppointmentPage() {
                       <Select onValueChange={field.onChange} value={field.value} disabled={!form.watch("appointmentDate") || availableTimeSlots.length === 0}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {availableTimeSlots.length > 0 ? 
+                          {availableTimeSlots.length > 0 ?
                             availableTimeSlots.map(slot => <SelectItem key={slot} value={slot}>{slot}</SelectItem>) :
-                            <SelectItem value="" disabled>No slots available or select date first</SelectItem>
+                            <div className="px-2 py-1.5 text-sm text-muted-foreground">No slots available or select date first</div>
                           }
                         </SelectContent>
                       </Select>
@@ -334,7 +327,7 @@ export default function NewAppointmentPage() {
               </CardContent>
             </Card>
           </div>
-          
+
           <Card className="shadow-lg">
             <CardHeader><CardTitle className="font-headline">Prescriptions</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -349,17 +342,20 @@ export default function NewAppointmentPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Medicine</FormLabel>
-                        <Select 
+                        <Select
                           onValueChange={(value) => {
                             const selectedMed = medicines.find(m => m.id === value);
-                            field.onChange(value); 
+                            field.onChange(value);
                             form.setValue(`prescriptions.${index}.medicineName`, selectedMed?.name || "");
-                          }} 
+                          }}
                           defaultValue={field.value}
                         >
                           <FormControl><SelectTrigger><SelectValue placeholder={medicines.length === 0 ? "No medicines found" : "Select medicine"} /></SelectTrigger></FormControl>
                           <SelectContent>
-                            {medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} ({med.description || 'No description'})</SelectItem>)}
+                            {medicines.length > 0 ?
+                                medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} ({med.description || 'No description'})</SelectItem>) :
+                                <div className="px-2 py-1.5 text-sm text-muted-foreground">No medicines available</div>
+                            }
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -409,13 +405,17 @@ export default function NewAppointmentPage() {
                   />
                 </div>
               ))}
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => append({ medicineId: "", medicineName: "", quantity: "", repetition: { morning: false, afternoon: false, evening: false }, instructions: "" })}
+                disabled={medicines.length === 0 && fields.length === 0}
               >
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Prescription
               </Button>
+               {medicines.length === 0 && fields.length === 0 && (
+                <p className="text-sm text-muted-foreground">Please add medicines to your database first to create prescriptions.</p>
+              )}
             </CardContent>
           </Card>
 
@@ -463,7 +463,7 @@ export default function NewAppointmentPage() {
             <Link href={preselectedPatientId ? `/doctor/patients/${preselectedPatientId}` : "/doctor/appointments"}>
               <Button type="button" variant="outline" disabled={isSubmittingForm}>Cancel</Button>
             </Link>
-            <Button type="submit" disabled={isSubmittingForm || authLoading || dataLoading || !patients.length}>
+            <Button type="submit" disabled={isSubmittingForm || authLoading || dataLoading || patients.length === 0}>
               {isSubmittingForm ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {isSubmittingForm ? "Saving..." : "Schedule Appointment"}
             </Button>
@@ -473,3 +473,6 @@ export default function NewAppointmentPage() {
     </div>
   );
 }
+
+
+    
