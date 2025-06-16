@@ -1,17 +1,139 @@
 
-import React from "react"; // Added import
+"use client";
+
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Users, CalendarClock, Pill } from "lucide-react";
+import { PlusCircle, Users, CalendarClock, Pill, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext";
+import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, orderBy, limit, Timestamp } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+
+interface DashboardStats {
+  totalPatients: number;
+  upcomingAppointments: number;
+  appointmentsToday: number;
+  totalMedicines: number;
+}
+
+interface RecentPatientActivityItem {
+  id: string;
+  name: string;
+  activity: string; 
+  img: string;
+  createdAt?: Date; // For sorting, if needed elsewhere
+}
 
 export default function DoctorDashboardPage() {
-  const stats = [
-    { title: "Total Patients", value: "120", icon: <Users className="h-6 w-6 text-primary" />, 변화: "+5 this month" },
-    { title: "Upcoming Appointments", value: "8", icon: <CalendarClock className="h-6 w-6 text-accent" />, 변화: "2 today" },
-    { title: "Medicines in DB", value: "75", icon: <Pill className="h-6 w-6 text-destructive" />, 변화: "+3 new" },
-  ];
+  const { user, userProfile, loading: authLoading } = useAuth();
+  const { toast } = useToast();
+
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [recentPatients, setRecentPatients] = useState<RecentPatientActivityItem[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user || !db || userProfile?.role !== 'doctor') {
+        setDataLoading(false);
+        return;
+      }
+      setDataLoading(true);
+      try {
+        // Fetch total patients
+        const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+        const patientsSnapshot = await getDocs(patientsQuery);
+        const totalPatients = patientsSnapshot.size;
+
+        // Fetch upcoming appointments
+        const today = new Date();
+        const startOfToday = new Date(today.setHours(0, 0, 0, 0));
+      
+        const upcomingAppointmentsQuery = query(
+          collection(db, APPOINTMENTS_COLLECTION),
+          where("doctorId", "==", user.uid),
+          where("status", "==", "scheduled"),
+          where("appointmentDate", ">=", Timestamp.fromDate(startOfToday))
+        );
+        const upcomingAppointmentsSnapshot = await getDocs(upcomingAppointmentsQuery);
+        const upcomingAppointmentsCount = upcomingAppointmentsSnapshot.size;
+        
+        let appointmentsTodayCount = 0;
+        const endOfTodayForCompare = new Date(today.setHours(23, 59, 59, 999)); // Use a fresh 'today'
+
+        upcomingAppointmentsSnapshot.docs.forEach(doc => {
+          const aptDate = (doc.data().appointmentDate as Timestamp).toDate();
+          if (aptDate >= startOfToday && aptDate <= endOfTodayForCompare) {
+            appointmentsTodayCount++;
+          }
+        });
+
+        // Fetch medicines count
+        const medicinesQuery = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
+        const medicinesSnapshot = await getDocs(medicinesQuery);
+        const totalMedicines = medicinesSnapshot.size;
+
+        setDashboardStats({
+          totalPatients,
+          upcomingAppointments: upcomingAppointmentsCount,
+          appointmentsToday: appointmentsTodayCount,
+          totalMedicines,
+        });
+
+        // Fetch recent patients
+        const recentPatientsQuery = query(
+          collection(db, PATIENTS_COLLECTION), 
+          where("doctorId", "==", user.uid), 
+          orderBy("createdAt", "desc"), 
+          limit(3)
+        );
+        const recentPatientsSnapshot = await getDocs(recentPatientsQuery);
+        const fetchedRecentPatients = recentPatientsSnapshot.docs.map(docSnap => {
+          const patientData = docSnap.data();
+          const createdAtDate = patientData.createdAt?.toDate ? patientData.createdAt.toDate() : new Date();
+          return {
+            id: docSnap.id,
+            name: patientData.name,
+            activity: `Registered on ${format(createdAtDate, "PP")}`,
+            img: `https://placehold.co/40x40.png?text=${patientData.name.charAt(0)}`,
+            createdAt: createdAtDate
+          };
+        }) as RecentPatientActivityItem[];
+        setRecentPatients(fetchedRecentPatients);
+
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+        toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
+      }
+      setDataLoading(false);
+    };
+
+    if (!authLoading && user && userProfile?.role === 'doctor') {
+      fetchDashboardData();
+    } else if (!authLoading && (!user || userProfile?.role !== 'doctor')) {
+      setDataLoading(false); 
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userProfile, authLoading, toast]); // db is stable
+
+  const statsToDisplay = useMemo(() => {
+    if (dataLoading || !dashboardStats) {
+      return [
+        { title: "Total Patients", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Users className="h-6 w-6 text-primary" /> },
+        { title: "Upcoming Appointments", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <CalendarClock className="h-6 w-6 text-accent" />, 변화: "" },
+        { title: "Medicines in DB", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Pill className="h-6 w-6 text-destructive" /> },
+      ];
+    }
+    return [
+      { title: "Total Patients", value: dashboardStats.totalPatients.toString(), icon: <Users className="h-6 w-6 text-primary" /> },
+      { title: "Upcoming Appointments", value: dashboardStats.upcomingAppointments.toString(), icon: <CalendarClock className="h-6 w-6 text-accent" />, 변화: `${dashboardStats.appointmentsToday} today` },
+      { title: "Medicines in DB", value: dashboardStats.totalMedicines.toString(), icon: <Pill className="h-6 w-6 text-destructive" /> },
+    ];
+  }, [dashboardStats, dataLoading]);
+
 
   const quickActions = [
     { label: "Add New Patient", href: "/doctor/patients/new", icon: <PlusCircle /> },
@@ -19,12 +141,17 @@ export default function DoctorDashboardPage() {
     { label: "Manage Medicines", href: "/doctor/medicines", icon: <Pill /> },
   ];
 
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
+
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Doctor Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, Dr. [DoctorName]!</p>
+          <p className="text-muted-foreground">Welcome back, {userProfile?.displayName || "Doctor"}!</p>
         </div>
         <Link href="/doctor/patients/new">
             <Button>
@@ -35,7 +162,7 @@ export default function DoctorDashboardPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat) => (
+        {statsToDisplay.map((stat) => (
           <Card key={stat.title} className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
@@ -43,7 +170,7 @@ export default function DoctorDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">{stat.변화}</p>
+              {stat.변화 && <p className="text-xs text-muted-foreground">{stat.변화}</p>}
             </CardContent>
           </Card>
         ))}
@@ -71,23 +198,24 @@ export default function DoctorDashboardPage() {
         <Card className="shadow-md">
           <CardHeader>
             <CardTitle className="font-headline">Recent Patient Activity</CardTitle>
-            <CardDescription>Overview of recent patient interactions.</CardDescription>
+            <CardDescription>Overview of recent patient registrations.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Placeholder for recent activity list */}
-            {[
-              { name: "Alice Wonderland", activity: "New appointment scheduled", time: "2h ago", img: "https://placehold.co/40x40.png?text=AW" },
-              { name: "Bob The Builder", activity: "Prescription updated", time: "5h ago", img: "https://placehold.co/40x40.png?text=BB" },
-              { name: "Charlie Brown", activity: "New patient registered", time: "1d ago", img: "https://placehold.co/40x40.png?text=CB" },
-            ].map(item => (
-              <div key={item.name} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                <Image src={item.img} alt={item.name} width={40} height={40} className="rounded-full" data-ai-hint="person avatar"/>
-                <div>
-                  <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.activity} - {item.time}</p>
+            {dataLoading && !recentPatients.length ? (
+                <div className="flex justify-center items-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
+            ) : recentPatients.length > 0 ? (
+              recentPatients.map(item => (
+                <div key={item.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                  <Image src={item.img} alt={item.name} width={40} height={40} className="rounded-full" data-ai-hint="person avatar"/>
+                  <div>
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.activity}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No recent patient registrations.</p>
+            )}
              <Link href="/doctor/patients">
                 <Button variant="link" className="p-0 h-auto text-primary">View all patients</Button>
             </Link>
