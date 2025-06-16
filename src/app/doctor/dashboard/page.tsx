@@ -123,13 +123,13 @@ export default function DoctorDashboardPage() {
     if (dataLoading || !dashboardStats) {
       return [
         { title: "Total Patients", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Users className="h-6 w-6 text-primary" /> },
-        { title: "Upcoming Appointments", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <CalendarClock className="h-6 w-6 text-accent" />, 변화: "" },
+        { title: "Upcoming Appointments", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <CalendarClock className="h-6 w-6 text-accent" />, trend: "" },
         { title: "Medicines in DB", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Pill className="h-6 w-6 text-destructive" /> },
       ];
     }
     return [
       { title: "Total Patients", value: dashboardStats.totalPatients.toString(), icon: <Users className="h-6 w-6 text-primary" /> },
-      { title: "Upcoming Appointments", value: dashboardStats.upcomingAppointments.toString(), icon: <CalendarClock className="h-6 w-6 text-accent" />, 변화: `${dashboardStats.appointmentsToday} today` },
+      { title: "Upcoming Appointments", value: dashboardStats.upcomingAppointments.toString(), icon: <CalendarClock className="h-6 w-6 text-accent" />, trend: `${dashboardStats.appointmentsToday} today` },
       { title: "Medicines in DB", value: dashboardStats.totalMedicines.toString(), icon: <Pill className="h-6 w-6 text-destructive" /> },
     ];
   }, [dashboardStats, dataLoading]);
@@ -170,7 +170,7 @@ export default function DoctorDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
-              {stat.변화 && <p className="text-xs text-muted-foreground">{stat.변화}</p>}
+              {stat.trend && <p className="text-xs text-muted-foreground">{stat.trend}</p>}
             </CardContent>
           </Card>
         ))}
@@ -225,3 +225,4 @@ export default function DoctorDashboardPage() {
     </div>
   );
 }
+

@@ -2,7 +2,7 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit } from 'firebase/firestore'; // Added limit
 // import { getAnalytics } from "firebase/analytics"; // Optional
 
 // Your web app's Firebase configuration
@@ -83,7 +83,7 @@ export const createUserProfileDocument = async (userId: string, data: { email: s
     createdAt: serverTimestamp(),
   };
   try {
-    await setDoc(userDocRef, userProfileData);
+    await setFirestoreDoc(userDocRef, userProfileData);
     return userProfileData;
   } catch (error) {
     console.error("Error creating user profile document: ", error);
@@ -95,7 +95,7 @@ export const getUserProfileDocument = async (userId: string) => {
   if (!db || !userId) return null; // Check if db is initialized
   const userDocRef = doc(db, USERS_COLLECTION, userId);
   try {
-    const docSnap = await getDoc(userDocRef);
+    const docSnap = await getFirestoreDoc(userDocRef);
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() };
     } else {
@@ -108,4 +108,5 @@ export const getUserProfileDocument = async (userId: string) => {
   }
 };
 
-export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc as setFirestoreDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp };
+// Explicitly re-export Firestore functions for use in other parts of the app
+export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc as setFirestoreDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit };
