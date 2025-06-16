@@ -16,6 +16,7 @@ import { LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { auth } from '@/lib/firebase'; // Direct import for quick check if needed
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -29,7 +30,7 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
-  const { login, userProfile, loading } = useAuth();
+  const { login, userProfile, loading } = useAuth(); // loading here is context loading
   const { toast } = useToast();
 
   useEffect(() => {
@@ -62,24 +63,31 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     const result = await login(data.email, data.password);
     if ('user' in result) {
-      // AuthContext useEffect will fetch profile and redirect
-      // Forcing a check here, though AuthContext should handle it.
+      // AuthContext useEffect will fetch profile and redirect.
+      // No explicit redirect here as it's handled by AuthContext.
+      // If userProfile is already available due to fast context update, we can redirect sooner.
       if (userProfile?.role === 'doctor') {
          router.push('/doctor/dashboard');
       } else if (userProfile?.role === 'patient') {
          router.push('/patient/dashboard');
       } else {
-        // If profile is still loading, wait or check role from result if available (not in this setup)
-        // Fallback in case redirect doesn't happen fast enough from context
-        // This part might be tricky due to async nature of profile loading
+        // This fallback might still be hit if profile takes a moment to load
+        // and the AuthContext's redirect hasn't fired yet.
         setTimeout(() => {
-          // Re-check after a delay for profile to load
-          if(auth.currentUser) { // auth is from firebase/auth
-            // This is just a fallback, the AuthContext effect is preferred
-            const expectedPath = selectedRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
-            router.push(expectedPath);
+          if(auth.currentUser) {
+            // Check if the profile is loaded in context now.
+            const currentAuthContextProfile = useAuth.getState ? useAuth.getState().userProfile : null; 
+            if (currentAuthContextProfile?.role === 'doctor') {
+              router.push('/doctor/dashboard');
+            } else if (currentAuthContextProfile?.role === 'patient') {
+              router.push('/patient/dashboard');
+            } else {
+                 // Default redirect if role is still unknown, AuthContext will correct if needed.
+                 const expectedPath = selectedRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
+                 router.push(expectedPath);
+            }
           }
-        }, 500);
+        }, 700); // Increased delay slightly
       }
     } else {
       form.setError("root", { message: result.error || "Invalid email or password." });
@@ -97,7 +105,7 @@ export default function LoginPage() {
     form.reset(); // Reset form errors/values
   }
 
-  if (loading && !userProfile) { // Show loading indicator if auth state is being determined
+  if (loading && !userProfile) { // Show loading indicator if auth state is being determined and no profile yet
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
             <AppLogo />
@@ -141,7 +149,7 @@ interface AuthCardProps {
 }
 
 function AuthCard({ role, form, onSubmit }: AuthCardProps) {
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth(); // This is the context loading
   return (
      <Card className="shadow-2xl">
         <CardHeader className="space-y-1 text-center">

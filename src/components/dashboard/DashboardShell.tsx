@@ -54,9 +54,10 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
       if (!user) {
         router.push("/login");
       } else if (userProfile && userProfile.role !== userRole) {
-        // If role mismatch, logout or redirect to appropriate dashboard/login
-        // Forcing logout and redirect to login for simplicity here
-        logout(); 
+        // If role mismatch, redirect to login with an error or to their correct dashboard
+        // Forcing logout and redirect to login for simplicity, AuthContext also has a check
+        logout();
+        router.push(`/login?error=role_mismatch&expected=${userRole}&actual=${userProfile.role}`);
       }
     }
   }, [user, userProfile, loading, userRole, router, logout]);
@@ -85,7 +86,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                   <SidebarMenuItem key={item.href} className="relative">
                     {!item.submenu ? (
                        <SidebarMenuButton
-                          asChild // SidebarMenuButton becomes a Slot
+                          asChild 
                           isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
@@ -101,7 +102,6 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           isActive={item.submenu.some(sub => pathname === sub.href || pathname.startsWith(sub.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
-                          // onClick={() => { /* Basic toggle for non-interactive example */ }}
                         >
                           {item.icon}
                           <span className="truncate">{item.title}</span>
@@ -110,7 +110,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           {item.submenu.map(subItem => (
                             <SidebarMenuSubItem key={subItem.href}>
                                <SidebarMenuSubButton 
-                                 asChild // SidebarMenuSubButton becomes a Slot
+                                 asChild 
                                  isActive={pathname === subItem.href}
                                >
                                 <Link href={subItem.href}>
@@ -151,3 +151,4 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
     </SidebarProvider>
   );
 }
+

@@ -188,3 +188,4 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
       </Card>
   )
 }
+

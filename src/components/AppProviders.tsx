@@ -11,3 +11,4 @@ type AppProvidersProps = {
 export function AppProviders({ children }: AppProvidersProps) {
   return <AuthProvider>{children}</AuthProvider>;
 }
+
