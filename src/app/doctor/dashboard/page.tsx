@@ -22,7 +22,7 @@ interface DashboardStats {
 interface RecentPatientActivityItem {
   id: string;
   name: string;
-  activity: string; 
+  activity: string;
   img: string;
   createdAt?: Date; // For sorting, if needed elsewhere
 }
@@ -51,7 +51,7 @@ export default function DoctorDashboardPage() {
         // Fetch upcoming appointments
         const today = new Date();
         const startOfToday = new Date(today.setHours(0, 0, 0, 0));
-      
+
         const upcomingAppointmentsQuery = query(
           collection(db, APPOINTMENTS_COLLECTION),
           where("doctorId", "==", user.uid),
@@ -60,9 +60,9 @@ export default function DoctorDashboardPage() {
         );
         const upcomingAppointmentsSnapshot = await getDocs(upcomingAppointmentsQuery);
         const upcomingAppointmentsCount = upcomingAppointmentsSnapshot.size;
-        
+
         let appointmentsTodayCount = 0;
-        const endOfTodayForCompare = new Date(new Date().setHours(23, 59, 59, 999)); 
+        const endOfTodayForCompare = new Date(new Date().setHours(23, 59, 59, 999));
 
         upcomingAppointmentsSnapshot.docs.forEach(doc => {
           const aptDate = (doc.data().appointmentDate as Timestamp).toDate();
@@ -85,9 +85,9 @@ export default function DoctorDashboardPage() {
 
         // Fetch recent patients
         const recentPatientsQuery = query(
-          collection(db, PATIENTS_COLLECTION), 
-          where("doctorId", "==", user.uid), 
-          orderBy("createdAt", "desc"), 
+          collection(db, PATIENTS_COLLECTION),
+          where("doctorId", "==", user.uid),
+          orderBy("createdAt", "desc"),
           limit(3)
         );
         const recentPatientsSnapshot = await getDocs(recentPatientsQuery);
@@ -107,9 +107,9 @@ export default function DoctorDashboardPage() {
       } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
         if (err.code === 'failed-precondition' && err.message && err.message.toLowerCase().includes('query requires an index')) {
-          toast({ 
-            variant: "destructive", 
-            title: "Database Index Required", 
+          toast({
+            variant: "destructive",
+            title: "Database Index Required",
             description: "A database index is needed for dashboard queries. Please check the Firebase console (or your browser's developer console for the error message, it often includes a direct link) to create the required index. Dashboard data may be incomplete or unavailable until the index is built.",
             duration: 20000 // Increased duration for visibility
           });
@@ -123,7 +123,7 @@ export default function DoctorDashboardPage() {
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchDashboardData();
     } else if (!authLoading && (!user || userProfile?.role !== 'doctor')) {
-      setDataLoading(false); 
+      setDataLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, userProfile, authLoading, toast]); // db is stable
@@ -210,7 +210,7 @@ export default function DoctorDashboardPage() {
             <CardDescription>Overview of recent patient registrations.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {dataLoading && !recentPatients.length && dashboardStats === null ? ( 
+            {dataLoading && !recentPatients.length && dashboardStats === null ? (
                 <div className="flex justify-center items-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
             ) : recentPatients.length > 0 ? (
               recentPatients.map(item => (
@@ -234,6 +234,3 @@ export default function DoctorDashboardPage() {
     </div>
   );
 }
-
-
-    
