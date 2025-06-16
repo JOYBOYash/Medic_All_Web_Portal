@@ -59,10 +59,10 @@ export default function HomePage() {
               <div className="flex flex-col justify-center space-y-4">
                 <div className="space-y-2">
                   <h1 className="text-4xl font-headline font-bold tracking-tighter sm:text-5xl xl:text-6xl/none text-primary-foreground_dark">
-                    Welcome to <span className="text-primary">HomeoConnect</span>
+                    Welcome to <span className="text-primary">Medicall</span>
                   </h1>
                   <p className="max-w-[600px] text-foreground md:text-xl">
-                    Bridging the gap between homeopathic practitioners and patients with seamless digital solutions. Manage appointments, prescriptions, and patient communication, all in one place.
+                    Bridging the gap between practitioners and patients with seamless digital solutions. Manage appointments, prescriptions, and patient communication, all in one place.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 min-[400px]:flex-row">
@@ -85,7 +85,7 @@ export default function HomePage() {
               </div>
               <Image
                 src="https://placehold.co/600x400.png"
-                alt="Homeopathy Clinic"
+                alt="Clinic"
                 data-ai-hint="clinic health"
                 width={600}
                 height={400}
@@ -101,9 +101,9 @@ export default function HomePage() {
             <div className="flex flex-col items-center justify-center space-y-4 text-center">
               <div className="space-y-2">
                 <div className="inline-block rounded-lg bg-muted px-3 py-1 text-sm">Key Features</div>
-                <h2 className="text-3xl font-headline font-bold tracking-tighter sm:text-5xl">Everything You Need for Modern Homeopathic Care</h2>
+                <h2 className="text-3xl font-headline font-bold tracking-tighter sm:text-5xl">Everything You Need for Modern Patient Care</h2>
                 <p className="max-w-[900px] text-muted-foreground md:text-xl/relaxed lg:text-base/relaxed xl:text-xl/relaxed">
-                  HomeoConnect offers a comprehensive suite of tools designed to enhance clinic efficiency and patient experience.
+                  Medicall offers a comprehensive suite of tools designed to enhance clinic efficiency and patient experience.
                 </p>
               </div>
             </div>
@@ -147,7 +147,7 @@ export default function HomePage() {
       </main>
 
       <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
-        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} HomeoConnect. All rights reserved.</p>
+        <p className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Medicall. All rights reserved.</p>
         <nav className="sm:ml-auto flex gap-4 sm:gap-6">
           <Link href="#" className="text-xs hover:underline underline-offset-4">
             Terms of Service
@@ -169,4 +169,3 @@ function FeatureListItem({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

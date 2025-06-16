@@ -5,8 +5,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { AppProviders } from '@/components/AppProviders';
 
 export const metadata: Metadata = {
-  title: 'HomeoConnect - Your Health, Connected',
-  description: 'Streamlining homeopathic clinic management and patient care.',
+  title: 'Medicall - Your Health, Connected',
+  description: 'Streamlining clinic management and patient care.',
 };
 
 export default function RootLayout({

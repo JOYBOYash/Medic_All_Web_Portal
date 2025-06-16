@@ -139,7 +139,7 @@ export default function LoginPage() {
         </TabsContent>
       </Tabs>
        <p className="mt-4 text-center text-sm text-muted-foreground">
-        New to HomeoConnect?{" "}
+        New to Medicall?{" "}
         <Link href={`/signup?role=${selectedRole}`} className="underline text-primary hover:text-primary/80">
           Create an account
         </Link>
