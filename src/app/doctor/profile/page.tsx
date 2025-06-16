@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ClinicDetails, UserProfile } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Save, UserCircle, Building, Loader2 } from "lucide-react"; // Added Loader2
+import { Save, UserCircle, Building, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Image from "next/image";
-import React, { useEffect, useState } from "react"; // Added useEffect, useState
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 const userProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short."),
@@ -40,7 +40,7 @@ const mockUser: UserProfile = {
 };
 
 const mockClinic: ClinicDetails = {
-  id: "doc123", // Should be linked to doctor's UID
+  id: "doc123", 
   clinicName: "Princeton-Plainsboro Teaching Hospital (Homeopathy Wing)",
   address: "123 Fictional St, Princeton, NJ",
   phoneNumber: "+16095550123",
@@ -50,31 +50,9 @@ const mockClinic: ClinicDetails = {
 export default function DoctorProfilePage() {
   const { user: authUser, userProfile: authUserProfile, loading: authLoading, setPageLoading } = useAuth();
   
-  // These will be populated from Firestore later
-  const [user, setUser] = useState<UserProfile>(authUserProfile || mockUser); // Initialize with auth context or mock
-  const [clinic, setClinic] = useState<ClinicDetails>(mockClinic); // To be fetched
-  const [dataLoading, setDataLoading] = useState(true); // Local data loading
-
-  useEffect(() => {
-    setPageLoading(true);
-    setDataLoading(true);
-    // TODO: Fetch doctor's clinic details from Firestore using authUser.uid
-    // For now, just using mock data and ensuring form is pre-filled
-    if (authUserProfile) {
-      setUser(authUserProfile);
-      profileForm.reset({
-        displayName: authUserProfile.displayName || "",
-        email: authUserProfile.email || "",
-      });
-    }
-    // Simulate clinic data fetch
-    setTimeout(() => {
-        clinicForm.reset(mockClinic); // Assuming mockClinic represents fetched data
-        setDataLoading(false);
-        setPageLoading(false);
-    }, 500);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserProfile, setPageLoading]); // profileForm.reset, clinicForm.reset are stable
+  const [user, setUser] = useState<UserProfile>(authUserProfile || mockUser); 
+  const [clinic, setClinic] = useState<ClinicDetails>(mockClinic); 
+  const [dataLoading, setDataLoading] = useState(true); 
 
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
@@ -89,24 +67,51 @@ export default function DoctorProfilePage() {
     defaultValues: clinic,
   });
 
+  useEffect(() => {
+    // DashboardShell has already called setPageLoading(true) due to route change.
+    // This effect is responsible for setting it to false when this page's content is ready.
+    setDataLoading(true); // For local loader or content visibility
+
+    // Simulate data fetching or setup for this page
+    if (authUserProfile) {
+      setUser(authUserProfile);
+      profileForm.reset({
+        displayName: authUserProfile.displayName || "",
+        email: authUserProfile.email || "",
+      });
+    }
+    // Simulate clinic data fetch for clinicForm
+    // In a real app, fetch clinic details for authUserProfile.id here
+    clinicForm.reset(mockClinic); 
+
+    const timer = setTimeout(() => {
+        setDataLoading(false); // Local state for content
+        setPageLoading(false); // Global loader off
+    }, 200); // Reduced timeout
+
+    return () => clearTimeout(timer); // Cleanup timeout
+    
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserProfile, setPageLoading]); // profileForm.reset & clinicForm.reset are stable
+
   const onProfileSubmit = (data: UserProfileFormValues) => {
     console.log("Profile update:", data);
-    // Placeholder: Update user profile in Firebase Auth / Firestore
     setUser(prev => ({...prev, ...data}));
     alert("Profile updated successfully (placeholder)!");
   };
 
   const onClinicSubmit = (data: ClinicDetailsFormValues) => {
     console.log("Clinic details update:", data);
-    // Placeholder: Update clinic details in Firestore
     setClinic(prev => ({...prev, ...data}));
     alert("Clinic details updated successfully (placeholder)!");
   };
 
   if (authLoading) {
-    return null; // DashboardShell handles the primary loader
+    return null; // DashboardShell handles the primary loader if auth is loading
   }
-  if (dataLoading) {
+  // If page-specific data is loading (even if auth is done), show local loader
+  // DashboardShell's global loader should be managed by setPageLoading(false) in useEffect
+  if (dataLoading && !authLoading) { 
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -236,3 +241,5 @@ export default function DoctorProfilePage() {
     </div>
   );
 }
+
+    

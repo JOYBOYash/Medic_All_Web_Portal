@@ -5,35 +5,36 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, Loader2 } from "lucide-react"; // Added Loader2
-import React, { useEffect, useState } from "react"; // Added useEffect, useState
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import { Bell, Palette, ShieldCheck, Loader2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 
 export default function DoctorSettingsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
-  // Placeholder states for settings
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkMode, setDarkMode] = React.useState(false); 
-  const [dataLoading, setDataLoading] = useState(true); // Local state for this page
+  const [dataLoading, setDataLoading] = useState(true);
 
 
   useEffect(() => {
-    // This page doesn't fetch data currently, so set loading to false.
-    // If it were to fetch settings from a backend, this would be the place.
-    setPageLoading(true); // Start global loading
-    setDataLoading(true);
-    // Simulate loading settings if any
-    setTimeout(() => {
-        setDataLoading(false);
-        setPageLoading(false); // End global loading
-    }, 200); // Short delay
+    // DashboardShell has already called setPageLoading(true) due to route change.
+    // This effect is responsible for setting it to false when this page's content is ready.
+    setDataLoading(true); // For local loader or content visibility
+
+    // Simulate settings load or setup
+    const timer = setTimeout(() => {
+        setDataLoading(false); // Local state for content visibility
+        setPageLoading(false); // Global loader off
+    }, 100); // Short delay, adjust if needed
+
+    return () => clearTimeout(timer); // Cleanup timeout
   }, [setPageLoading]);
 
   if (authLoading) {
-    return null; // DashboardShell handles the primary loader
+    return null; 
   }
-   if (dataLoading) {
+   if (dataLoading && !authLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -123,3 +124,5 @@ export default function DoctorSettingsPage() {
     </div>
   );
 }
+
+    
