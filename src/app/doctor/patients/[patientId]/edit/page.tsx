@@ -15,7 +15,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { PATIENTS_COLLECTION, doc, getDoc, updateDoc, serverTimestamp, db } from "@/lib/firebase";
+import { PATIENTS_COLLECTION, doc, getFirestoreDoc, updateDoc, serverTimestamp, db } from "@/lib/firebase";
 import type { Patient } from "@/types/homeoconnect";
 import { useToast } from "@/hooks/use-toast";
 
@@ -56,7 +56,7 @@ export default function EditPatientPage() {
       setDataLoading(true);
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        const docSnap = await getDoc(patientDocRef);
+        const docSnap = await getFirestoreDoc(patientDocRef);
         if (docSnap.exists() && docSnap.data().doctorId === user.uid) {
           const patientData = docSnap.data() as Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>; // Exclude non-form fields
           form.reset({
@@ -95,7 +95,7 @@ export default function EditPatientPage() {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
       // Ensure doctorId is not changed during update, keep the original doctorId
       // Also, ensure authUid is preserved if it exists.
-      const existingPatientDoc = await getDoc(patientDocRef);
+      const existingPatientDoc = await getFirestoreDoc(patientDocRef);
       if (!existingPatientDoc.exists() || existingPatientDoc.data()?.doctorId !== user.uid) {
          toast({ variant: "destructive", title: "Error", description: "Patient not found or update not permitted." });
          return;
@@ -232,3 +232,4 @@ export default function EditPatientPage() {
     </div>
   );
 }
+    

@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ArrowLeft, Edit, PlusCircle, User as UserIcon, CalendarDays, Pill, BriefcaseMedical, Loader2, MoreHorizontal, Eye, Trash2, FileText } from "lucide-react";
 import type { Patient, Appointment } from "@/types/homeoconnect";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, doc, getDoc, collection, query, where, getDocs, Timestamp, deleteDoc } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, doc, getFirestoreDoc, collection, query, where, getDocs, Timestamp, deleteDoc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -40,7 +40,7 @@ export default function PatientDetailPage() {
       try {
         // Fetch patient details
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        const patientDocSnap = await getDoc(patientDocRef);
+        const patientDocSnap = await getFirestoreDoc(patientDocRef);
 
         if (patientDocSnap.exists() && patientDocSnap.data().doctorId === user.uid) {
           setPatient({ 
@@ -291,3 +291,4 @@ function AppointmentsTable({ appointments, patientName, onDelete }: Appointments
     </div>
   );
 }
+    
