@@ -41,7 +41,7 @@ const mockUser: UserProfile = {
 
 const mockClinic: ClinicDetails = {
   id: "doc123", 
-  clinicName: "Princeton-Plainsboro Teaching Hospital (Homeopathy Wing)",
+  clinicName: "Princeton-Plainsboro Teaching Hospital (Medicall Wing)",
   address: "123 Fictional St, Princeton, NJ",
   phoneNumber: "+16095550123",
   specialization: "Diagnostic Homeopathy, Rare Conditions",
@@ -57,42 +57,40 @@ export default function DoctorProfilePage() {
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
     defaultValues: {
-      displayName: user.displayName || "",
-      email: user.email || "",
+      displayName: "", // Will be set by useEffect
+      email: "",       // Will be set by useEffect
     },
   });
 
   const clinicForm = useForm<ClinicDetailsFormValues>({
     resolver: zodResolver(clinicDetailsSchema),
-    defaultValues: clinic,
+    defaultValues: mockClinic, // Mock data is fine for default
   });
 
   useEffect(() => {
-    // DashboardShell has already called setPageLoading(true) due to route change.
-    // This effect is responsible for setting it to false when this page's content is ready.
-    setDataLoading(true); // For local loader or content visibility
+    if (!authLoading) { // Only proceed when auth context is not loading
+      setDataLoading(true); // Start local data "loading" / setup phase
 
-    // Simulate data fetching or setup for this page
-    if (authUserProfile) {
-      setUser(authUserProfile);
-      profileForm.reset({
-        displayName: authUserProfile.displayName || "",
-        email: authUserProfile.email || "",
-      });
+      if (authUserProfile) {
+        setUser(authUserProfile);
+        profileForm.reset({
+          displayName: authUserProfile.displayName || "",
+          email: authUserProfile.email || "",
+        });
+      }
+      clinicForm.reset(mockClinic); // Reset with mock data
+
+      // After forms are reset and local state is set, turn off loaders
+      const timer = setTimeout(() => {
+        setDataLoading(false); // Turn off local data loader for this page's content
+        setPageLoading(false); // Turn off global page loader overlay
+      }, 50); // Small delay to ensure state updates propagate
+
+      return () => clearTimeout(timer);
     }
-    // Simulate clinic data fetch for clinicForm
-    // In a real app, fetch clinic details for authUserProfile.id here
-    clinicForm.reset(mockClinic); 
-
-    const timer = setTimeout(() => {
-        setDataLoading(false); // Local state for content
-        setPageLoading(false); // Global loader off
-    }, 200); // Reduced timeout
-
-    return () => clearTimeout(timer); // Cleanup timeout
-    
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUserProfile, setPageLoading]); // profileForm.reset & clinicForm.reset are stable
+  }, [authLoading, authUserProfile, setPageLoading]); // form.reset methods are stable
+
 
   const onProfileSubmit = (data: UserProfileFormValues) => {
     console.log("Profile update:", data);
@@ -107,11 +105,10 @@ export default function DoctorProfilePage() {
   };
 
   if (authLoading) {
-    return null; // DashboardShell handles the primary loader if auth is loading
+    return null; // DashboardShell handles the primary loader
   }
-  // If page-specific data is loading (even if auth is done), show local loader
-  // DashboardShell's global loader should be managed by setPageLoading(false) in useEffect
-  if (dataLoading && !authLoading) { 
+  
+  if (dataLoading) { // This page's specific content loader
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -241,5 +238,4 @@ export default function DoctorProfilePage() {
     </div>
   );
 }
-
     

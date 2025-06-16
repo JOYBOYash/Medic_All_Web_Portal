@@ -18,23 +18,24 @@ export default function DoctorSettingsPage() {
 
 
   useEffect(() => {
-    // DashboardShell has already called setPageLoading(true) due to route change.
-    // This effect is responsible for setting it to false when this page's content is ready.
-    setDataLoading(true); // For local loader or content visibility
+    if (!authLoading) { // Only proceed when auth context is not loading
+        setDataLoading(true); // Start local data "loading" / setup phase
 
-    // Simulate settings load or setup
-    const timer = setTimeout(() => {
-        setDataLoading(false); // Local state for content visibility
-        setPageLoading(false); // Global loader off
-    }, 100); // Short delay, adjust if needed
+        // Simulate settings load or setup for this page
+        const timer = setTimeout(() => {
+            setDataLoading(false); // Local state for content visibility
+            setPageLoading(false); // Global page loader overlay off
+        }, 50); // Short delay, adjust if needed
 
-    return () => clearTimeout(timer); // Cleanup timeout
-  }, [setPageLoading]);
+        return () => clearTimeout(timer);
+    }
+  }, [authLoading, setPageLoading]);
 
   if (authLoading) {
     return null; 
   }
-   if (dataLoading && !authLoading) {
+  
+  if (dataLoading) { // This page's specific content loader
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
