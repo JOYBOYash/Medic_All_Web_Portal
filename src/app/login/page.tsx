@@ -31,23 +31,14 @@ export default function LoginPage() {
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
   const emailFromQuery = searchParams.get("email");
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
-  const { login, user, userProfile, loading: authContextLoading } = useAuth();
+  const { login, user, userProfile, loading: authContextLoading, setPageLoading } = useAuth(); // Removed setPageLoading for now
   const { toast } = useToast();
 
   useEffect(() => {
     setSelectedRole(initialRole);
   }, [initialRole]);
   
-  useEffect(() => {
-    if (!authContextLoading && user && userProfile) {
-      if (userProfile.role === 'doctor') {
-        router.replace('/doctor/dashboard');
-      } else if (userProfile.role === 'patient') {
-        router.replace('/patient/dashboard');
-      }
-    }
-  }, [user, userProfile, authContextLoading, router]);
-
+  // Removed the useEffect hook that handled redirection. AuthContext now handles this.
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -85,6 +76,7 @@ export default function LoginPage() {
     const result = await login(data.email, data.password);
     if ('user' in result && result.user) {
       toast({ title: "Login Successful", description: "Redirecting to your dashboard..."});
+      // Redirection is now handled by AuthContext's onAuthStateChanged and route protection useEffect
     } else {
       form.setError("root", { message: result.error || "Invalid email or password." });
       toast({
@@ -105,13 +97,15 @@ export default function LoginPage() {
         currentParams.set('email', emailFromQuery);
     } else if (!emailFromQuery && currentParams.has('email')) {
         // If emailFromQuery is cleared but still in params from old state, remove it.
-        // This might not be strictly necessary if navigation always sets it or clears it.
     }
     router.replace(`${pathname}?${currentParams.toString()}`, { scroll: false });
     form.reset({ email: emailFromQuery || "", password: "" }); // Reset form, preserving email if from query
   }
 
-  if (authContextLoading && !user) { 
+  // If AuthContext is loading OR (AuthContext is done loading AND user exists), show loader.
+  // The AuthContext will handle redirecting if the user is already logged in.
+  // The login form shows only if AuthContext is done AND there's no user.
+  if (authContextLoading || (!authContextLoading && user)) { 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
             <AppLogo />
