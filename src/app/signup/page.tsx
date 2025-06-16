@@ -64,14 +64,18 @@ export default function SignupPage() {
 
   const onSubmit = async (data: SignupFormValues) => {
     const result = await signup(data.email, data.password, selectedRole, data.displayName);
+    
     if ('user' in result && result.user) {
       toast({
         title: "Signup Successful!",
-        description: "Redirecting you to login...",
+        description: "Account created. Please login to continue.",
       });
-      router.push(`/login?role=${selectedRole}`);
+      // Redirect to login, passing email and role
+      router.push(`/login?role=${selectedRole}&email=${encodeURIComponent(data.email)}`);
+
     } else if (result.errorCode === 'auth/email-already-in-use') {
       toast({
+        variant: "default", // Use default/info toast
         title: "Account Exists",
         description: "This email is already registered. Redirecting to login...",
       });
