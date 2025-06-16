@@ -62,7 +62,7 @@ export default function DoctorDashboardPage() {
         const upcomingAppointmentsCount = upcomingAppointmentsSnapshot.size;
         
         let appointmentsTodayCount = 0;
-        const endOfTodayForCompare = new Date(today.setHours(23, 59, 59, 999)); // Use a fresh 'today'
+        const endOfTodayForCompare = new Date(new Date().setHours(23, 59, 59, 999)); 
 
         upcomingAppointmentsSnapshot.docs.forEach(doc => {
           const aptDate = (doc.data().appointmentDate as Timestamp).toDate();
@@ -104,9 +104,18 @@ export default function DoctorDashboardPage() {
         }) as RecentPatientActivityItem[];
         setRecentPatients(fetchedRecentPatients);
 
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching dashboard data:", err);
-        toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
+        if (err.code === 'failed-precondition' && err.message && err.message.toLowerCase().includes('query requires an index')) {
+          toast({ 
+            variant: "destructive", 
+            title: "Database Index Required", 
+            description: "A database index is needed for dashboard queries. Please check the Firebase console (or your browser's developer console for the error message) for a link to create it. Dashboard data may be incomplete or unavailable until the index is built.",
+            duration: 15000 
+          });
+        } else {
+          toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
+        }
       }
       setDataLoading(false);
     };
@@ -201,7 +210,7 @@ export default function DoctorDashboardPage() {
             <CardDescription>Overview of recent patient registrations.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {dataLoading && !recentPatients.length ? (
+            {dataLoading && !recentPatients.length && dashboardStats === null ? ( 
                 <div className="flex justify-center items-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
             ) : recentPatients.length > 0 ? (
               recentPatients.map(item => (
@@ -225,4 +234,3 @@ export default function DoctorDashboardPage() {
     </div>
   );
 }
-
