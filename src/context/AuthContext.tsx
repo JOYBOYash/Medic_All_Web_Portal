@@ -35,10 +35,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true); // Start auth context loading
+      setLoading(true); // Start auth context loading for this state change
 
       if (firebaseUser) {
-        setIsPageLoading(true); // Assume page will load or redirect
+        // User is authenticated, try to fetch profile
         const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
         try {
           const userDocSnap = await getFirestoreDoc(userDocRef);
@@ -46,96 +46,89 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const profileData = userDocSnap.data() as UserProfile;
             setUser(firebaseUser);
             setUserProfile(profileData);
+            setLoading(false); // Auth context loading finished for this user
 
-            // If user is on login/signup/root but is authenticated, redirect them.
-            // Set page loading true before this redirect.
-            if ((pathname === '/login' || pathname === '/signup' || pathname === '/') && profileData.role) {
-              if (profileData.role === 'doctor') router.replace('/doctor/dashboard');
-              else if (profileData.role === 'patient') router.replace('/patient/dashboard');
-              // The target page will be responsible for setting isPageLoading(false)
+            // Determine if a redirect from a public page is needed.
+            // The route protection useEffect will handle more complex role-based redirects.
+            const isOnPublicRedirectPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
+            if (isOnPublicRedirectPage && profileData.role) {
+              // Redirect is expected. The route protection useEffect will manage isPageLoading(true) for this.
             } else {
-              // If not redirecting, the current page (if under DashboardShell) is responsible for its loader.
-              // If DashboardShell is not active (e.g. user lands directly on a protected page URL before shell mounts),
-              // the page component itself must handle setting isPageLoading(false).
-              // This scenario is covered by individual pages setting it false.
+              // User authenticated, profile loaded, and not on a page requiring immediate redirect from onAuthStateChanged.
+              // Set isPageLoading to false. DashboardShell/page will manage it for content.
+              setIsPageLoading(false);
             }
           } else {
-            console.warn("No user profile found in Firestore for UID:", firebaseUser.uid);
-            await signOut(auth); // This will trigger onAuthStateChanged again with firebaseUser = null
-            setUser(null); setUserProfile(null); setIsPageLoading(false);
+            // Profile doesn't exist, critical issue. Log out user.
+            console.warn("No user profile found in Firestore for UID:", firebaseUser.uid, "Logging out.");
+            await signOut(auth); // This will re-trigger onAuthStateChanged with firebaseUser = null
+            // States (user, userProfile, loading, isPageLoading) will be reset in the !firebaseUser block.
           }
         } catch (error) {
           console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
-          await signOut(auth);
-          setUser(null); setUserProfile(null); setIsPageLoading(false);
-        } finally {
-          setLoading(false); // Auth context loading is finished for this phase
-          // Do not set setIsPageLoading(false) here generally, as the current page or redirect target handles it.
+          await signOut(auth); // Error fetching profile, log out.
         }
-      } else { // No firebaseUser (logged out or initial state)
+      } else {
+        // No firebaseUser (logged out or initial state check)
         setUser(null);
         setUserProfile(null);
         setLoading(false); // Auth context loading finished
-        setIsPageLoading(false); // No user, so probably on a public page or login, stop global page loader.
+        setIsPageLoading(false); // No user, so likely on a public page or login, stop global page loader.
       }
     });
     return () => unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Pathname is intentionally not a dependency here, this effect is for auth state changes.
+  }, []); // Pathname is not a dependency here.
 
   useEffect(() => {
-    // This effect handles route protection based on current auth state and path
-    if (!loading) { // Ensure auth context loading is complete
-      let needsRedirectAndPageLoad = false;
+    // This effect handles route protection and redirects based on current auth state and path
+    if (!loading) { // Ensure auth context initial loading is complete
+      let needsRedirect = false;
+      let redirectPath = '';
 
       if (!user && (pathname.startsWith('/doctor') || pathname.startsWith('/patient'))) {
-        // Not logged in but trying to access protected routes
-        needsRedirectAndPageLoad = true; router.replace('/login');
+        needsRedirect = true; redirectPath = '/login';
       } else if (user && userProfile) {
-        // Logged in, check for role mismatches or redirects from public pages
         if (pathname.startsWith('/doctor') && userProfile.role !== 'doctor') {
-          needsRedirectAndPageLoad = true; logout(); router.replace(`/login?error=role_mismatch&expected=doctor&actual=${userProfile.role}`);
+          needsRedirect = true; logout(); redirectPath = `/login?error=role_mismatch&expected=doctor&actual=${userProfile.role}`;
         } else if (pathname.startsWith('/patient') && userProfile.role !== 'patient') {
-          needsRedirectAndPageLoad = true; logout(); router.replace(`/login?error=role_mismatch&expected=patient&actual=${userProfile.role}`);
+          needsRedirect = true; logout(); redirectPath = `/login?error=role_mismatch&expected=patient&actual=${userProfile.role}`;
         } else if ((pathname === '/login' || pathname === '/signup' || pathname === '/')) {
-          // User is on a public page but is already logged in
-          needsRedirectAndPageLoad = true;
-          if (userProfile.role === 'doctor') router.replace('/doctor/dashboard');
-          else if (userProfile.role === 'patient') router.replace('/patient/dashboard');
-          else needsRedirectAndPageLoad = false; // Should not happen with defined roles
+          needsRedirect = true;
+          if (userProfile.role === 'doctor') redirectPath = '/doctor/dashboard';
+          else if (userProfile.role === 'patient') redirectPath = '/patient/dashboard';
+          else needsRedirect = false; // Should not happen with defined roles
         }
       }
 
-      if (needsRedirectAndPageLoad) {
-        setIsPageLoading(true); // Set page loading true if a redirect to a shell-managed page is happening
+      if (needsRedirect && redirectPath) {
+        setIsPageLoading(true); // Set page loading true for the navigation
+        router.replace(redirectPath);
       }
-      // If no redirect condition is met, the current page is responsible for its own loader state.
-      // We don't set setIsPageLoading(false) here because the redirection itself will trigger a new page load cycle.
+      // If no redirect, current page (if any) is responsible for its loader state.
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, loading, pathname]); // `logout` is stable from `useCallback` if we were to define it with it.
+  }, [user, userProfile, loading, pathname]);
+
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
-    // setLoading(true); // Auth context loading starts, onAuthStateChanged will handle more
-    setIsPageLoading(true); // Indicate page transition might occur
+    setIsPageLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will set user, profile, and manage further isPageLoading states.
+      // onAuthStateChanged will handle setting user, profile, and further loading states.
       return { user: userCredential.user };
     } catch (error: any) {
-      console.error("Login error:", error);
-      // setLoading(false); // Auth context loading ends on error
-      setIsPageLoading(false); // Stop page loading on login error
+      setIsPageLoading(false);
       let errorMessage = "Failed to login. Please check your credentials.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
       }
+      console.error("Login error:", error.code, errorMessage);
       return { error: errorMessage };
     }
   };
 
   const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<UserCredentialWrapper | { error: string, errorCode?: string }> => {
-    // setLoading(true);
     setIsPageLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -152,10 +145,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: serverTimestamp(),
       };
       await setFirestoreDoc(userDocRef, newUserProfile); 
-      // onAuthStateChanged will handle setting user, profile. Redirect to login will manage loader.
+      // onAuthStateChanged will handle user/profile. Redirect to login page handles loader.
       return { user: firebaseUser };
     } catch (error: any) {
-      // setLoading(false);
       setIsPageLoading(false);
       let errorMessage = "Failed to signup. Please try again.";
       if (error.code === 'auth/email-already-in-use') errorMessage = "This email address is already in use.";
@@ -169,8 +161,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsPageLoading(true); // Page will change to /login
     try {
       await signOut(auth);
-      // onAuthStateChanged will handle user/profile reset and set isPageLoading(false)
-      // No need to explicitly push router here, onAuthStateChanged and route protection useEffect will handle it.
+      // onAuthStateChanged will reset user/profile and set isPageLoading(false) when !user.
+      // The route protection useEffect will then handle redirect to /login if not already there.
     } catch (error) {
       console.error("Logout error:", error);
       setUser(null); setUserProfile(null); setLoading(false); setIsPageLoading(false); // Reset states on error
