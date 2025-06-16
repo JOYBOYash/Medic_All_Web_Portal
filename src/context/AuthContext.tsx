@@ -34,50 +34,57 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Set user optimistically. Profile and loading state will be updated after Firestore check.
         setUser(firebaseUser);
         const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          const profileData = userDocSnap.data() as UserProfile;
-          setUserProfile(profileData);
-          // Initial redirect after profile is loaded
-          if (pathname === '/login' || pathname === '/signup' || pathname === '/') {
-            if (profileData.role === 'doctor') router.push('/doctor/dashboard');
-            else if (profileData.role === 'patient') router.push('/patient/dashboard');
+        try {
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const profileData = userDocSnap.data() as UserProfile;
+            setUserProfile(profileData);
+            // Initial redirect after profile is loaded
+            if (pathname === '/login' || pathname === '/signup' || pathname === '/') {
+              if (profileData.role === 'doctor') router.push('/doctor/dashboard');
+              else if (profileData.role === 'patient') router.push('/patient/dashboard');
+            }
+            setLoading(false);
+          } else {
+            console.error("No user profile found in Firestore for UID:", firebaseUser.uid);
+            // Critical error: Auth user exists, but no Firestore profile. Sign out.
+            // This will re-trigger onAuthStateChanged with a null user, which handles state cleanup.
+            await signOut(auth);
           }
-        } else {
-          console.error("No user profile found in Firestore for UID:", firebaseUser.uid);
-          // This case can happen if signup process was interrupted
-          // Or if a user exists in Auth but not in Firestore users collection.
-          // For robustness, consider creating a profile here if it's missing, or logging out.
-          setUserProfile(null); 
-          // await signOut(auth); // Decide on handling this: logout or attempt profile creation
-          // setUser(null);
+        } catch (error) {
+          console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
+          // If Firestore read fails, sign out to prevent inconsistent state.
+          await signOut(auth);
         }
       } else {
         setUser(null);
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [pathname, router]);
+  }, [pathname, router]); // Dependencies for the main auth listener
 
+  // Effect for handling redirects based on auth state and current path
   useEffect(() => {
     if (!loading && !user && (pathname.startsWith('/doctor') || pathname.startsWith('/patient'))) {
       router.push('/login');
     }
     if (!loading && user && userProfile) {
       if (pathname.startsWith('/doctor') && userProfile.role !== 'doctor') {
-        logout(); // Log out user with incorrect role for dashboard
+        logout(); 
         router.push('/login?error=role_mismatch');
       } else if (pathname.startsWith('/patient') && userProfile.role !== 'patient') {
-        logout(); // Log out user with incorrect role for dashboard
+        logout(); 
         router.push('/login?error=role_mismatch');
       }
     }
-  }, [user, userProfile, loading, pathname, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userProfile, loading, pathname, router]); // Logout is stable, router is stable
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
     setLoading(true);
@@ -87,7 +94,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { user: userCredential.user };
     } catch (error: any) {
       console.error("Login error:", error);
-      setLoading(false);
+      setLoading(false); // Ensure loading is false on error
       let errorMessage = "Failed to login. Please check your credentials.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
@@ -109,16 +116,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
         photoURL: firebaseUser.photoURL,
+        // createdAt will be set by serverTimestamp
       };
       await setDoc(userDocRef, { ...newUserProfile, createdAt: serverTimestamp() });
       
-      // setUser(firebaseUser); // onAuthStateChanged will handle this
-      // setUserProfile(newUserProfile); // onAuthStateChanged will handle this
-      // setLoading(false); // onAuthStateChanged will handle this
+      // onAuthStateChanged will handle setting user, profile, and loading state after successful signup and profile creation.
       return { user: firebaseUser };
     } catch (error: any) {
       console.error("Signup error:", error);
-      setLoading(false);
+      setLoading(false); // Ensure loading is false on error
       let errorMessage = "Failed to signup. Please try again.";
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = "This email address is already in use.";
@@ -128,22 +134,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
-    // setLoading(true); // Not strictly needed here as onAuthStateChanged will set loading
     try {
       await signOut(auth);
-      setUser(null);
-      setUserProfile(null);
-      router.push('/login'); // Ensure redirection to login after logout
+      // onAuthStateChanged will handle setting user, userProfile to null and loading to false
+      // and redirect via the useEffect hook.
+      router.push('/login'); 
     } catch (error) {
       console.error("Logout error:", error);
+      // Even if signOut fails, attempt to clear local state, though this is unlikely.
+      setUser(null);
+      setUserProfile(null);
+      setLoading(false);
+      router.push('/login');
     } 
-    // finally { setLoading(false); } // onAuthStateChanged handles this
   };
   
-  // Expose a way to update userProfile in context if it's changed elsewhere (e.g. profile page)
-  // const updateProfileInContext = (profile: UserProfile) => {
-  //   setUserProfile(profile);
-  // }
 
   return (
     <AuthContext.Provider value={{ user, userProfile, loading, login, signup, logout }}>
@@ -152,15 +157,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Export useAuth hook with explicit state type for easier consumption if needed
-export const useAuth = (): AuthContextType & { getState?: () => { user: User | null, userProfile: UserProfile | null, loading: boolean } } => {
+export const useAuth = (): AuthContextType => { // Removed getState from return type as it's not typically needed
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  // Add getState for specific scenarios if direct state access is needed outside of reactive updates
-  // (though generally prefer reactive updates through useEffect)
-  // const getState = () => ({ user: context.user, userProfile: context.userProfile, loading: context.loading });
-  // return { ...context, getState };
   return context;
 };
