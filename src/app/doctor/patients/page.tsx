@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -6,38 +7,80 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Patient } from "@/types/homeoconnect";
-import { MoreHorizontal, PlusCircle, Search, User, Edit, Trash2, FileText } from "lucide-react";
+import { MoreHorizontal, PlusCircle, Search, User, Edit, Trash2, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
-
-// Mock data - replace with API call
-const mockPatients: Patient[] = [
-  { id: "1", doctorId: "doc1", name: "Alice Wonderland", age: 30, sex: "female", complications: "Anxiety, Insomnia", createdAt: new Date(), updatedAt: new Date() },
-  { id: "2", doctorId: "doc1", name: "Bob The Builder", age: 45, sex: "male", complications: "Back Pain", createdAt: new Date(), updatedAt: new Date() },
-  { id: "3", doctorId: "doc1", name: "Charlie Brown", age: 8, sex: "male", complications: "Allergies", createdAt: new Date(), updatedAt: new Date() },
-  { id: "4", doctorId: "doc1", name: "Diana Prince", age: 35, sex: "female", complications: "Migraines", createdAt: new Date(), updatedAt: new Date() },
-  { id: "5", doctorId: "doc1", name: "Edward Scissorhands", age: 28, sex: "male", complications: "Skin Rashes", createdAt: new Date(), updatedAt: new Date() },
-];
+import { useAuth } from "@/context/AuthContext";
+import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, deleteDoc, doc } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DoctorPatientsPage() {
+  const { user, loading: authLoading, userProfile } = useAuth();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
-  const [patients, setPatients] = useState<Patient[]>(mockPatients); // Later, this will be fetched
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPatients = async () => {
+      if (!user || !db || userProfile?.role !== 'doctor') {
+        setDataLoading(false);
+        return;
+      }
+      setDataLoading(true);
+      try {
+        const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+        const querySnapshot = await getDocs(q);
+        const fetchedPatients = querySnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data(),
+          // Ensure createdAt and updatedAt are properly handled if they are Timestamps
+          createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
+          updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
+        } as Patient));
+        setPatients(fetchedPatients);
+      } catch (error) {
+        console.error("Error fetching patients: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
+      }
+      setDataLoading(false);
+    };
+
+    if (!authLoading && user && userProfile?.role === 'doctor') {
+      fetchPatients();
+    } else if (!authLoading && !user) {
+      setDataLoading(false); 
+    }
+  }, [user, userProfile, authLoading, toast]);
 
   const filteredPatients = useMemo(() => {
     return patients.filter(patient =>
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.complications.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
-  const handleDeletePatient = (patientId: string) => {
-    // Placeholder for delete logic
-    if(confirm("Are you sure you want to delete this patient? This action cannot be undone.")){
-      setPatients(prev => prev.filter(p => p.id !== patientId));
-      alert(`Patient ${patientId} deleted (placeholder)`);
+  const handleDeletePatient = async (patientId: string, patientName: string) => {
+    if (!user || !db || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
+        return;
+    }
+    if (confirm(`Are you sure you want to delete patient "${patientName}"? This action cannot be undone.`)) {
+      try {
+        await deleteDoc(doc(db, PATIENTS_COLLECTION, patientId));
+        setPatients(prev => prev.filter(p => p.id !== patientId));
+        toast({ title: "Success", description: `Patient "${patientName}" deleted.` });
+      } catch (error) {
+        console.error("Error deleting patient: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
+      }
     }
   };
+  
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -56,7 +99,9 @@ export default function DoctorPatientsPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline">Patient List</CardTitle>
-          <CardDescription>A total of {filteredPatients.length} patients found.</CardDescription>
+          <CardDescription>
+            A total of {filteredPatients.length} patient(s) found {searchTerm && `matching "${searchTerm}"`}.
+          </CardDescription>
           <div className="relative mt-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
@@ -69,7 +114,9 @@ export default function DoctorPatientsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredPatients.length > 0 ? (
+          {dataLoading ? (
+            <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
+          ) : filteredPatients.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -129,7 +176,7 @@ export default function DoctorPatientsPage() {
                             </Link>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => handleDeletePatient(patient.id)} 
+                              onClick={() => handleDeletePatient(patient.id, patient.name)} 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -146,8 +193,15 @@ export default function DoctorPatientsPage() {
           ) : (
             <div className="text-center py-10 text-muted-foreground">
               <User className="mx-auto h-12 w-12 mb-4" />
-              <p className="font-semibold">No patients found.</p>
-              <p>Try adjusting your search or add a new patient.</p>
+              <p className="font-semibold">
+                {patients.length === 0 && !searchTerm ? "You haven't added any patients yet." : "No patients found."}
+              </p>
+              <p>
+                {patients.length === 0 && !searchTerm 
+                  ? "Click 'Add New Patient' to get started." 
+                  : "Try adjusting your search or add a new patient."
+                }
+              </p>
             </div>
           )}
         </CardContent>
