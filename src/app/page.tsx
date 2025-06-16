@@ -1,11 +1,40 @@
+
+"use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, CalendarHeart, MessageSquareHeart, Stethoscope } from "lucide-react";
+import { CheckCircle, CalendarHeart, MessageSquareHeart, Stethoscope, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { AppLogo } from "@/components/shared/AppLogo";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function HomePage() {
+  const { user, userProfile, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user && userProfile) {
+      if (userProfile.role === 'doctor') {
+        router.replace('/doctor/dashboard');
+      } else if (userProfile.role === 'patient') {
+        router.replace('/patient/dashboard');
+      }
+    }
+  }, [user, userProfile, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-primary/30 via-background to-accent/30">
+        <Loader2 className="h-16 w-16 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // If user is loaded and already logged in, they would have been redirected.
+  // So, this page is primarily for non-logged-in users.
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -47,6 +76,11 @@ export default function HomePage() {
                       Patient Access
                     </Button>
                   </Link>
+                </div>
+                 <div className="mt-4">
+                    <p className="text-sm text-muted-foreground">
+                        New user? <Link href="/signup" className="text-primary hover:underline">Sign up here</Link>.
+                    </p>
                 </div>
               </div>
               <Image

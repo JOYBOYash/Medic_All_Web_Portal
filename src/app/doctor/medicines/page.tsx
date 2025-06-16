@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -10,29 +11,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Medicine } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MoreHorizontal, PlusCircle, Pill, Edit, Trash2, Save, Search } from "lucide-react";
-import React, { useState, useMemo } from "react";
+import { MoreHorizontal, PlusCircle, Pill, Edit, Trash2, Save, Search, Loader2 } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { useAuth } from "@/context/AuthContext";
+import { db, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
 
 const medicineFormSchema = z.object({
-  id: z.string().optional(), // For editing
+  id: z.string().optional(), 
   name: z.string().min(2, { message: "Medicine name must be at least 2 characters." }),
   description: z.string().optional(),
 });
 
 type MedicineFormValues = z.infer<typeof medicineFormSchema>;
 
-// Mock data - replace with API call
-const mockMedicines: Medicine[] = [
-  { id: "med1", doctorId: "doc1", name: "Arnica Montana", description: "30C, For bruises and muscle soreness", createdAt: new Date(), updatedAt: new Date() },
-  { id: "med2", doctorId: "doc1", name: "Nux Vomica", description: "200CH, For indigestion, irritability", createdAt: new Date(), updatedAt: new Date() },
-  { id: "med3", doctorId: "doc1", name: "Pulsatilla", description: "6X, For colds with thick yellow discharge, weepy", createdAt: new Date(), updatedAt: new Date() },
-  { id: "med4", doctorId: "doc1", name: "Sulphur", description: "1M, For skin issues, burning sensations", createdAt: new Date(), updatedAt: new Date() },
-];
-
 export default function DoctorMedicinesPage() {
-  const [medicines, setMedicines] = useState<Medicine[]>(mockMedicines);
+  const { user, userProfile, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -44,6 +46,27 @@ export default function DoctorMedicinesPage() {
       description: "",
     },
   });
+
+  useEffect(() => {
+    const fetchMedicines = async () => {
+      if (!user || userProfile?.role !== 'doctor') return;
+      setDataLoading(true);
+      try {
+        const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
+        const querySnapshot = await getDocs(q);
+        const fetchedMedicines = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
+        setMedicines(fetchedMedicines);
+      } catch (error) {
+        console.error("Error fetching medicines: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not load medicines." });
+      }
+      setDataLoading(false);
+    };
+
+    if (user && userProfile?.role === 'doctor') {
+      fetchMedicines();
+    }
+  }, [user, userProfile, toast]);
   
   React.useEffect(() => {
     if (editingMedicine) {
@@ -59,25 +82,36 @@ export default function DoctorMedicinesPage() {
 
 
   const onSubmit = async (data: MedicineFormValues) => {
-    if (editingMedicine) {
-      // Update logic
-      setMedicines(prev => prev.map(m => m.id === editingMedicine.id ? { ...m, ...data, updatedAt: new Date() } : m));
-      alert(`Medicine "${data.name}" updated (placeholder)!`);
-    } else {
-      // Create logic
-      const newMedicine: Medicine = {
-        id: `med${Date.now()}`, // Temporary ID
-        doctorId: "doc1", // Placeholder
-        ...data,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      setMedicines(prev => [newMedicine, ...prev]);
-      alert(`Medicine "${data.name}" added (placeholder)!`);
+    if (!user || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized" });
+        return;
     }
-    setIsDialogOpen(false);
-    setEditingMedicine(null);
-    form.reset();
+    form.formState.isSubmitting = true;
+    try {
+        if (editingMedicine && editingMedicine.id) {
+            const medDocRef = doc(db, MEDICINES_COLLECTION, editingMedicine.id);
+            await updateDoc(medDocRef, { ...data, updatedAt: serverTimestamp() });
+            setMedicines(prev => prev.map(m => m.id === editingMedicine.id ? { ...m, ...data, updatedAt: new Date() } as Medicine : m)); // Optimistic update
+            toast({ title: "Success", description: `Medicine "${data.name}" updated.` });
+        } else {
+            const newMedicineData = {
+                ...data,
+                doctorId: user.uid,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            };
+            const docRef = await addDoc(collection(db, MEDICINES_COLLECTION), newMedicineData);
+            setMedicines(prev => [{ id: docRef.id, ...newMedicineData, createdAt: new Date(), updatedAt: new Date() } as Medicine, ...prev]); // Optimistic update
+            toast({ title: "Success", description: `Medicine "${data.name}" added.`});
+        }
+        setIsDialogOpen(false);
+        setEditingMedicine(null);
+        form.reset();
+    } catch (error) {
+        console.error("Error saving medicine: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to save medicine." });
+    }
+    form.formState.isSubmitting = false;
   };
 
   const handleEdit = (medicine: Medicine) => {
@@ -85,10 +119,20 @@ export default function DoctorMedicinesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (medicineId: string) => {
+  const handleDelete = async (medicineId: string) => {
+    if (!user || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized" });
+        return;
+    }
     if (confirm("Are you sure you want to delete this medicine?")) {
-      setMedicines(prev => prev.filter(m => m.id !== medicineId));
-      alert(`Medicine ${medicineId} deleted (placeholder)`);
+      try {
+        await deleteDoc(doc(db, MEDICINES_COLLECTION, medicineId));
+        setMedicines(prev => prev.filter(m => m.id !== medicineId));
+        toast({ title: "Success", description: "Medicine deleted." });
+      } catch (error) {
+        console.error("Error deleting medicine: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to delete medicine." });
+      }
     }
   };
   
@@ -102,8 +146,16 @@ export default function DoctorMedicinesPage() {
     return medicines.filter(med =>
       med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (med.description && med.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    ).sort((a, b) => a.name.localeCompare(b.name));
   }, [medicines, searchTerm]);
+
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
+  if (!user || userProfile?.role !== 'doctor') {
+     router.push('/login');
+     return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -133,7 +185,9 @@ export default function DoctorMedicinesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredMedicines.length > 0 ? (
+          {dataLoading ? (
+            <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
+          ) : filteredMedicines.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -228,7 +282,7 @@ export default function DoctorMedicinesPage() {
                    <Button type="button" variant="outline">Cancel</Button>
                 </DialogClose>
                 <Button type="submit" disabled={form.formState.isSubmitting}>
-                  <Save className="mr-2 h-4 w-4" />
+                  {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
                   {form.formState.isSubmitting ? "Saving..." : (editingMedicine ? "Save Changes" : "Add Medicine")}
                 </Button>
               </DialogFooter>

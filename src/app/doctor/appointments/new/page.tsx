@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -15,22 +16,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray } from "react-hook-form";
 import * as z from "zod";
-import { format } from "date-fns";
-import { ArrowLeft, CalendarIcon, PlusCircle, Save, Trash2, Clock, Users } from "lucide-react";
+import { format as formatDateFn } from "date-fns"; // Renamed to avoid conflict
+import { ArrowLeft, CalendarIcon, PlusCircle, Save, Trash2, Clock, Users, Loader2 } from "lucide-react";
 import { Appointment, Patient, Medicine, PainSeverity, painSeverityOptions, commonSymptomsOptions, PrescribedMedicine } from "@/types/homeoconnect";
+import { useAuth } from "@/context/AuthContext";
+import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, serverTimestamp, Timestamp } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data
-const mockPatients: Patient[] = [
-  { id: "pat1", doctorId: "doc1", name: "Alice Wonderland", age: 30, sex: "female", complications: "Anxiety", createdAt: new Date(), updatedAt: new Date() },
-  { id: "pat2", doctorId: "doc1", name: "Bob The Builder", age: 45, sex: "male", complications: "Back Pain", createdAt: new Date(), updatedAt: new Date() },
-];
-const mockMedicines: Medicine[] = [
-  { id: "med1", doctorId: "doc1", name: "Arnica Montana", description: "30C", createdAt: new Date(), updatedAt: new Date() },
-  { id: "med2", doctorId: "doc1", name: "Nux Vomica", description: "200CH", createdAt: new Date(), updatedAt: new Date() },
-];
 
 const prescriptionSchema = z.object({
-  medicineId: z.string().min(1, "Medicine is required."),
+  medicineId: z.string().min(1, "Medicine is required."), // This will be Firestore ID
+  medicineName: z.string(), // Denormalized name
   quantity: z.string().min(1, "Quantity is required."),
   repetition: z.object({
     morning: z.boolean().default(false),
@@ -38,19 +34,19 @@ const prescriptionSchema = z.object({
     evening: z.boolean().default(false),
   }).refine(data => data.morning || data.afternoon || data.evening, {
     message: "At least one repetition time must be selected.",
-    path: ["morning"], // General path for the group
+    path: ["morning"], 
   }),
   instructions: z.string().optional(),
 });
 
 const appointmentFormSchema = z.object({
-  patientId: z.string().min(1, "Patient is required."),
+  patientId: z.string().min(1, "Patient is required."), // Firestore ID of the patient
   appointmentDate: z.date({ required_error: "Appointment date is required." }),
   appointmentTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
   patientRemarks: z.string().optional(),
   doctorNotes: z.string().optional(),
   painSeverity: z.enum(["none", "mild", "moderate", "severe", "excruciating"]).optional(),
-  symptoms: z.array(z.string()).optional(), // Using string array for selected symptom values
+  symptoms: z.array(z.string()).optional(), 
   prescriptions: z.array(prescriptionSchema).optional(),
   nextAppointmentDate: z.date().optional(),
 });
@@ -61,11 +57,12 @@ export default function NewAppointmentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedPatientId = searchParams.get("patientId");
+  const { user, userProfile, loading: authLoading } = useAuth();
+  const { toast } = useToast();
 
-  // In a real app, fetch these from your backend
-  const [patients, setPatients] = useState<Patient[]>(mockPatients);
-  const [medicines, setMedicines] = useState<Medicine[]>(mockMedicines);
-  
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
 
 
@@ -86,20 +83,45 @@ export default function NewAppointmentPage() {
     control: form.control,
     name: "prescriptions",
   });
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user || userProfile?.role !== 'doctor') return;
+      setDataLoading(true);
+      try {
+        // Fetch patients for this doctor
+        const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+        const patientsSnapshot = await getDocs(patientsQuery);
+        const fetchedPatients = patientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Patient));
+        setPatients(fetchedPatients);
+
+        // Fetch medicines for this doctor
+        const medicinesQuery = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
+        const medicinesSnapshot = await getDocs(medicinesQuery);
+        const fetchedMedicines = medicinesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
+        setMedicines(fetchedMedicines);
+
+      } catch (error) {
+        console.error("Error fetching data for new appointment: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not load patient or medicine data." });
+      }
+      setDataLoading(false);
+    };
+    if (user && userProfile?.role === 'doctor') {
+      fetchData();
+    }
+  }, [user, userProfile, toast]);
   
-  // Effect to update available time slots when date changes
   useEffect(() => {
     const selectedDate = form.watch("appointmentDate");
     if (selectedDate) {
-      // Placeholder: Fetch or calculate available slots for the selected date
-      // This is a simplified example. Real slot calculation is complex.
-      const dayOfWeek = selectedDate.getDay(); // 0 (Sun) to 6 (Sat)
-      if (dayOfWeek === 0 || dayOfWeek === 6) { // Weekend
+      const dayOfWeek = selectedDate.getDay(); 
+      if (dayOfWeek === 0 || dayOfWeek === 6) { 
         setAvailableTimeSlots(["10:00", "11:00", "12:00"]);
-      } else { // Weekday
+      } else { 
         setAvailableTimeSlots(["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "14:00", "14:30", "15:00", "15:30", "16:00"]);
       }
-      form.setValue("appointmentTime", ""); // Reset time when date changes
+      form.setValue("appointmentTime", ""); 
     } else {
       setAvailableTimeSlots([]);
     }
@@ -107,25 +129,52 @@ export default function NewAppointmentPage() {
 
 
   const onSubmit = async (data: AppointmentFormValues) => {
-    // Combine date and time
+    if (!user || userProfile?.role !== 'doctor') {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to schedule appointments." });
+        return;
+    }
+
     const appointmentDateTime = new Date(data.appointmentDate);
     const [hours, minutes] = data.appointmentTime.split(':').map(Number);
     appointmentDateTime.setHours(hours, minutes);
 
-    const finalData = {
-      ...data,
-      appointmentDate: appointmentDateTime,
-      // Map medicineId to medicineName for prescriptions if needed before saving
+    const finalData: Omit<Appointment, 'id' | 'createdAt' | 'updatedAt'> = {
+      patientId: data.patientId,
+      doctorId: user.uid,
+      appointmentDate: Timestamp.fromDate(appointmentDateTime),
+      patientRemarks: data.patientRemarks,
+      doctorNotes: data.doctorNotes,
+      painSeverity: data.painSeverity,
+      symptoms: data.symptoms,
       prescriptions: data.prescriptions?.map(p => ({
         ...p,
-        medicineName: medicines.find(m => m.id === p.medicineId)?.name || "Unknown Medicine",
-      })),
-      status: "scheduled", // Default status
+        // medicineName is already part of the prescriptionSchema populated from select
+      })) || [],
+      nextAppointmentDate: data.nextAppointmentDate ? Timestamp.fromDate(data.nextAppointmentDate) : undefined,
+      status: "scheduled",
     };
-    console.log("New appointment data:", finalData);
-    alert("New appointment scheduled (placeholder)!");
-    router.push(preselectedPatientId ? `/doctor/patients/${preselectedPatientId}` : "/doctor/appointments");
+
+    try {
+        await addDoc(collection(db, APPOINTMENTS_COLLECTION), {
+            ...finalData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        toast({ title: "Success", description: "New appointment scheduled successfully." });
+        router.push(preselectedPatientId ? `/doctor/patients/${preselectedPatientId}` : "/doctor/appointments");
+    } catch (error) {
+        console.error("Error scheduling appointment:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to schedule appointment. Please try again." });
+    }
   };
+
+  if (authLoading || dataLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
+  if (!user || userProfile?.role !== 'doctor') {
+     router.push('/login');
+     return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -172,7 +221,7 @@ export default function NewAppointmentPage() {
                           <FormControl>
                             <Button variant="outline" className={`w-full justify-start text-left font-normal ${!field.value && "text-muted-foreground"}`}>
                               <CalendarIcon className="mr-2 h-4 w-4" />
-                              {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                              {field.value ? formatDateFn(field.value, "PPP") : <span>Pick a date</span>}
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
@@ -237,7 +286,6 @@ export default function NewAppointmentPage() {
                     </FormItem>
                   )}
                 />
-                {/* Symptoms could be a multi-select or tag input. For simplicity, using a text area for now or a few checkboxes. */}
                 <FormItem>
                     <FormLabel>Common Symptoms (Optional)</FormLabel>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-1 border rounded-md">
@@ -288,7 +336,14 @@ export default function NewAppointmentPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Medicine</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select 
+                          onValueChange={(value) => {
+                            const selectedMed = medicines.find(m => m.id === value);
+                            field.onChange(value); // Set medicineId
+                            form.setValue(`prescriptions.${index}.medicineName`, selectedMed?.name || "");
+                          }} 
+                          defaultValue={field.value}
+                        >
                           <FormControl><SelectTrigger><SelectValue placeholder="Select medicine" /></SelectTrigger></FormControl>
                           <SelectContent>
                             {medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} ({med.description})</SelectItem>)}
@@ -341,7 +396,11 @@ export default function NewAppointmentPage() {
                   />
                 </div>
               ))}
-              <Button type="button" variant="outline" onClick={() => append({ medicineId: "", quantity: "", repetition: { morning: false, afternoon: false, evening: false }, instructions: "" })}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => append({ medicineId: "", medicineName: "", quantity: "", repetition: { morning: false, afternoon: false, evening: false }, instructions: "" })}
+              >
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Prescription
               </Button>
             </CardContent>
@@ -372,7 +431,7 @@ export default function NewAppointmentPage() {
                           <FormControl>
                             <Button variant={"outline"} className={`w-full justify-start text-left font-normal ${!field.value && "text-muted-foreground"}`}>
                               <CalendarIcon className="mr-2 h-4 w-4" />
-                              {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                              {field.value ? formatDateFn(field.value, "PPP") : <span>Pick a date</span>}
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
@@ -391,8 +450,8 @@ export default function NewAppointmentPage() {
             <Link href={preselectedPatientId ? `/doctor/patients/${preselectedPatientId}` : "/doctor/appointments"}>
               <Button type="button" variant="outline">Cancel</Button>
             </Link>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              <Save className="mr-2 h-4 w-4" />
+            <Button type="submit" disabled={form.formState.isSubmitting || authLoading || dataLoading}>
+              {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {form.formState.isSubmitting ? "Saving..." : "Schedule Appointment"}
             </Button>
           </div>
@@ -401,4 +460,3 @@ export default function NewAppointmentPage() {
     </div>
   );
 }
-

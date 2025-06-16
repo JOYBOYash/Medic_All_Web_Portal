@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,34 +12,34 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, UserCircle } from "lucide-react";
+import { LogOut, Settings, UserCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-// import { useAuth } from "@/context/AuthContext"; // Placeholder for auth context
+import { useAuth } from "@/context/AuthContext"; 
+import { Skeleton } from "../ui/skeleton";
+
 
 export function UserNav() {
-  // const { user, logout } = useAuth(); // Placeholder
-  const router = useRouter();
-
-  // Placeholder user data
-  const user = {
-    displayName: "Dr. Smith",
-    email: "dr.smith@example.com",
-    photoURL: "https://placehold.co/100x100.png",
-    role: "doctor", // This would come from your auth state
-  };
+  const { user, userProfile, logout, loading } = useAuth();
 
   const handleLogout = async () => {
-    // await logout(); // Placeholder
-    alert("Logging out (placeholder)");
-    router.push("/login");
+    await logout();
   };
 
   const getProfileLink = () => {
-    return user.role === 'doctor' ? '/doctor/profile' : '/patient/profile';
+    if (!userProfile) return "#";
+    return userProfile.role === 'doctor' ? '/doctor/profile' : '/patient/profile';
+  }
+  const getSettingsLink = () => {
+    if (!userProfile) return "#";
+    return userProfile.role === 'doctor' ? '/doctor/settings' : '/patient/settings';
   }
 
-  if (!user) {
+
+  if (loading) {
+    return <Skeleton className="h-10 w-10 rounded-full" />;
+  }
+
+  if (!user || !userProfile) {
     return (
       <Link href="/login">
         <Button variant="outline">Login</Button>
@@ -51,9 +52,9 @@ export function UserNav() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10">
-            <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User"} data-ai-hint="profile avatar" />
+            <AvatarImage src={userProfile.photoURL || undefined} alt={userProfile.displayName || "User"} data-ai-hint="profile avatar" />
             <AvatarFallback>
-              {user.displayName ? user.displayName.charAt(0).toUpperCase() : <UserCircle />}
+              {userProfile.displayName ? userProfile.displayName.charAt(0).toUpperCase() : <UserCircle />}
             </AvatarFallback>
           </Avatar>
         </Button>
@@ -61,9 +62,9 @@ export function UserNav() {
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{user.displayName || "User"}</p>
+            <p className="text-sm font-medium leading-none">{userProfile.displayName || "User"}</p>
             <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
+              {userProfile.email}
             </p>
           </div>
         </DropdownMenuLabel>
@@ -75,7 +76,7 @@ export function UserNav() {
               <span>Profile</span>
             </DropdownMenuItem>
           </Link>
-          <Link href={user.role === 'doctor' ? "/doctor/settings" : "/patient/settings"}>
+          <Link href={getSettingsLink()}>
              <DropdownMenuItem>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>
@@ -91,3 +92,4 @@ export function UserNav() {
     </DropdownMenu>
   );
 }
+

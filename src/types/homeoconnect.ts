@@ -1,9 +1,13 @@
+
+import type { Timestamp } from 'firebase/firestore';
+
 export interface UserProfile {
-  id: string;
+  id: string; // Firebase UID
   email: string | null;
   role: 'doctor' | 'patient';
   displayName?: string | null;
   photoURL?: string | null;
+  createdAt?: Timestamp; // Firestore Timestamp
 }
 
 export interface ClinicDetails {
@@ -12,31 +16,35 @@ export interface ClinicDetails {
   address: string;
   phoneNumber: string;
   specialization?: string;
+  // doctorId: string; // Link to the doctor's UserProfile.id
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface Patient {
-  id: string;
+  id: string; // Firestore document ID
   doctorId: string; // UID of the doctor who created this patient
   name: string;
   age: number;
   sex: 'male' | 'female' | 'other';
   complications: string; // Text area for main health issues
-  createdAt: Date;
-  updatedAt: Date;
+  // Optional: if patient creates an account, link their auth UID
+  authUid?: string | null; 
+  createdAt: Timestamp; // Firestore Timestamp
+  updatedAt: Timestamp; // Firestore Timestamp
 }
 
 export interface Medicine {
-  id: string;
+  id: string; // Firestore document ID
   doctorId: string; // UID of the doctor who added this medicine
   name: string;
   description?: string; // e.g., potency, form (pills, liquid)
-  // any other relevant fields like common uses, stock, etc.
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface PrescribedMedicine {
-  medicineId: string;
+  medicineId: string; // Refers to Medicine.id (or could be just the name if not linking to a DB of medicines)
   medicineName: string; // Denormalized for easy display
   quantity: string; // e.g., "10 pills", "1 teaspoon"
   repetition: {
@@ -51,19 +59,19 @@ export type PainSeverity = 'none' | 'mild' | 'moderate' | 'severe' | 'excruciati
 export type CommonSymptom = 'fever' | 'cough' | 'headache' | 'fatigue' | 'nausea' | 'dizziness'; // Example, can be expanded
 
 export interface Appointment {
-  id: string;
-  patientId: string;
-  doctorId: string;
-  appointmentDate: Date;
-  patientRemarks?: string; // Notes from patient before/during appointment
-  doctorNotes?: string; // Doctor's private notes
+  id: string; // Firestore document ID
+  patientId: string; // Refers to Patient.id (the Firestore ID of the patient record)
+  doctorId: string; // Doctor's Firebase UID
+  appointmentDate: Timestamp; // Use Firestore Timestamp for dates
+  patientRemarks?: string; 
+  doctorNotes?: string; 
   painSeverity?: PainSeverity;
-  symptoms?: string[]; // Could be keywords or selected from a list
+  symptoms?: string[]; 
   prescriptions: PrescribedMedicine[];
-  nextAppointmentDate?: Date;
+  nextAppointmentDate?: Timestamp;
   status: 'scheduled' | 'completed' | 'cancelled';
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 // For dropdowns
@@ -75,7 +83,6 @@ export const painSeverityOptions: { value: PainSeverity; label: string }[] = [
   { value: 'excruciating', label: 'Excruciating' },
 ];
 
-// Example common symptoms, this list could be managed by the doctor or be predefined
 export const commonSymptomsOptions: { value: string; label: string }[] = [
   { value: 'fever', label: 'Fever' },
   { value: 'cough', label: 'Cough' },

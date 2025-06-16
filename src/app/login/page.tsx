@@ -1,3 +1,4 @@
+
 "use client";
 
 import { AppLogo } from "@/components/shared/AppLogo";
@@ -5,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
@@ -14,10 +14,12 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  password: z.string().min(1, { message: "Password is required." }), // Min 1 for presence check
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -27,10 +29,27 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
+  const { login, userProfile, loading } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     setSelectedRole(initialRole);
   }, [initialRole]);
+
+  useEffect(() => {
+    const errorParam = searchParams.get("error");
+    if (errorParam === "role_mismatch") {
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: "You are not authorized for that role's dashboard.",
+      });
+      // Clear the error from URL
+      router.replace('/login', { scroll: false });
+
+    }
+  }, [searchParams, toast, router]);
+
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -41,32 +60,52 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginFormValues) => {
-    console.log("Login attempt:", data, "as", selectedRole);
-    // Placeholder for Firebase login logic
-    // try {
-    //   await signInWithEmailAndPassword(auth, data.email, data.password);
-    //   // Store role or fetch from user profile after login
-    //   if (selectedRole === 'doctor') {
-    //     router.push('/doctor/dashboard');
-    //   } else {
-    //     router.push('/patient/dashboard');
-    //   }
-    // } catch (error) {
-    //   console.error("Login failed:", error);
-    //   form.setError("root", { message: "Invalid email or password." });
-    // }
-    alert(`Login submitted for ${selectedRole} (placeholder):\nEmail: ${data.email}`);
-    if (selectedRole === 'doctor') {
-        router.push('/doctor/dashboard');
+    const result = await login(data.email, data.password);
+    if ('user' in result) {
+      // AuthContext useEffect will fetch profile and redirect
+      // Forcing a check here, though AuthContext should handle it.
+      if (userProfile?.role === 'doctor') {
+         router.push('/doctor/dashboard');
+      } else if (userProfile?.role === 'patient') {
+         router.push('/patient/dashboard');
       } else {
-        router.push('/patient/dashboard');
+        // If profile is still loading, wait or check role from result if available (not in this setup)
+        // Fallback in case redirect doesn't happen fast enough from context
+        // This part might be tricky due to async nature of profile loading
+        setTimeout(() => {
+          // Re-check after a delay for profile to load
+          if(auth.currentUser) { // auth is from firebase/auth
+            // This is just a fallback, the AuthContext effect is preferred
+            const expectedPath = selectedRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
+            router.push(expectedPath);
+          }
+        }, 500);
       }
+    } else {
+      form.setError("root", { message: result.error || "Invalid email or password." });
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: result.error || "Please check your credentials and try again.",
+      });
+    }
   };
   
   const handleTabChange = (value: string) => {
     setSelectedRole(value as 'doctor' | 'patient');
     router.replace(`/login?role=${value}`, { scroll: false });
+    form.reset(); // Reset form errors/values
   }
+
+  if (loading && !userProfile) { // Show loading indicator if auth state is being determined
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
+            <AppLogo />
+            <p className="mt-4 text-lg text-primary-foreground_dark">Loading...</p>
+        </div>
+    );
+  }
+
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
@@ -75,8 +114,8 @@ export default function LoginPage() {
       </div>
       <Tabs value={selectedRole} onValueChange={handleTabChange} className="w-full max-w-md">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="doctor">Doctor</TabsTrigger>
-          <TabsTrigger value="patient">Patient</TabsTrigger>
+          <TabsTrigger value="doctor">Doctor Login</TabsTrigger>
+          <TabsTrigger value="patient">Patient Login</TabsTrigger>
         </TabsList>
         <TabsContent value="doctor">
           <AuthCard role="doctor" form={form} onSubmit={onSubmit} />
@@ -87,8 +126,8 @@ export default function LoginPage() {
       </Tabs>
        <p className="mt-4 text-center text-sm text-muted-foreground">
         New to HomeoConnect?{" "}
-        <Link href="#" className="underline text-primary hover:text-primary/80">
-          Contact support to get started.
+        <Link href={`/signup?role=${selectedRole}`} className="underline text-primary hover:text-primary/80">
+          Create an account
         </Link>
       </p>
     </div>
@@ -102,6 +141,7 @@ interface AuthCardProps {
 }
 
 function AuthCard({ role, form, onSubmit }: AuthCardProps) {
+  const { loading: authLoading } = useAuth();
   return (
      <Card className="shadow-2xl">
         <CardHeader className="space-y-1 text-center">
@@ -136,7 +176,7 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
                     <div className="flex items-center justify-between">
                       <FormLabel>Password</FormLabel>
                       <Link
-                        href="#"
+                        href="#" // TODO: Implement forgot password
                         className="text-sm font-medium text-primary hover:underline"
                       >
                         Forgot password?
@@ -152,9 +192,9 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
               {form.formState.errors.root && (
                 <p className="text-sm font-medium text-destructive">{form.formState.errors.root.message}</p>
               )}
-              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+              <Button type="submit" className="w-full" disabled={authLoading || form.formState.isSubmitting}>
                 <LogIn className="mr-2 h-4 w-4" />
-                {form.formState.isSubmitting ? "Signing In..." : "Sign In"}
+                {(authLoading || form.formState.isSubmitting) ? "Signing In..." : "Sign In"}
               </Button>
             </form>
           </Form>
@@ -165,3 +205,4 @@ function AuthCard({ role, form, onSubmit }: AuthCardProps) {
       </Card>
   )
 }
+

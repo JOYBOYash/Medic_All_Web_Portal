@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   SidebarProvider,
   Sidebar,
@@ -18,12 +18,13 @@ import {
   SidebarMenuSubItem,
   SidebarMenuSubButton,
   SidebarInset,
-} from "@/components/ui/sidebar"; // Assuming this is the correct path to your Sidebar component
+} from "@/components/ui/sidebar"; 
 import { MainHeader } from "@/components/shared/MainHeader";
 import { AppLogo } from "@/components/shared/AppLogo";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "../ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, Loader2 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 export interface NavItem {
   title: string;
@@ -39,12 +40,35 @@ interface DashboardShellProps {
   children: React.ReactNode;
   navItems: NavItem[];
   userRole: "doctor" | "patient";
-  pageTitle?: string; // Optional title for the current page content
+  pageTitle?: string; 
 }
 
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
-  const [openMobile, setOpenMobile] = React.useState(false); // For mobile sidebar
+  const router = useRouter();
+  const [openMobile, setOpenMobile] = React.useState(false);
+  const { user, userProfile, loading, logout } = useAuth();
+
+  React.useEffect(() => {
+    if (!loading) {
+      if (!user) {
+        router.push("/login");
+      } else if (userProfile && userProfile.role !== userRole) {
+        // If role mismatch, logout or redirect to appropriate dashboard/login
+        // Forcing logout and redirect to login for simplicity here
+        logout(); 
+      }
+    }
+  }, [user, userProfile, loading, userRole, router, logout]);
+
+  if (loading || !user || !userProfile) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
 
   return (
     <SidebarProvider defaultOpen>
@@ -55,45 +79,45 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
             <SidebarTrigger className="hidden group-data-[collapsible=icon]:flex data-[state=closed]:hidden" />
           </SidebarHeader>
           <SidebarContent className="p-2">
-            <ScrollArea className="h-[calc(100vh-8rem)]"> {/* Adjust height based on header/footer */}
+            <ScrollArea className="h-[calc(100vh-8rem)]"> 
               <SidebarMenu>
                 {navItems.map((item) => (
                   <SidebarMenuItem key={item.href} className="relative">
                     {!item.submenu ? (
-                       <Link href={item.href}>
-                        <SidebarMenuButton
-                          asChild
+                       <SidebarMenuButton
+                          asChild // SidebarMenuButton becomes a Slot
                           isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
                         >
-                          {item.icon}
-                          <span className="truncate">{item.title}</span>
+                          <Link href={item.href}>
+                            {item.icon}
+                            <span className="truncate">{item.title}</span>
+                          </Link>
                         </SidebarMenuButton>
-                      </Link>
                     ) : (
-                      // Placeholder for submenu logic if needed - current sidebar doesn't directly support dropdowns
-                      // For simplicity, we'll render submenus as separate items or group them visually
                       <>
                         <SidebarMenuButton
                           isActive={item.submenu.some(sub => pathname === sub.href || pathname.startsWith(sub.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
-                          // onClick={() => { /* Toggle submenu */ }}
+                          // onClick={() => { /* Basic toggle for non-interactive example */ }}
                         >
                           {item.icon}
                           <span className="truncate">{item.title}</span>
                         </SidebarMenuButton>
-                        {/* This sub-menu rendering would need custom logic or a different sidebar component for full interactivity */}
                         <SidebarMenuSub>
                           {item.submenu.map(subItem => (
                             <SidebarMenuSubItem key={subItem.href}>
-                               <Link href={subItem.href}>
-                                <SidebarMenuSubButton asChild isActive={pathname === subItem.href}>
+                               <SidebarMenuSubButton 
+                                 asChild // SidebarMenuSubButton becomes a Slot
+                                 isActive={pathname === subItem.href}
+                               >
+                                <Link href={subItem.href}>
                                   {subItem.icon}
                                   <span>{subItem.title}</span>
-                                </SidebarMenuSubButton>
-                              </Link>
+                                </Link>
+                              </SidebarMenuSubButton>
                             </SidebarMenuSubItem>
                           ))}
                         </SidebarMenuSub>
@@ -105,7 +129,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
             </ScrollArea>
           </SidebarContent>
           <SidebarFooter className="p-2 border-t">
-            <Button variant="ghost" className="w-full justify-start gap-2">
+            <Button variant="ghost" className="w-full justify-start gap-2" onClick={logout}>
               <LogOut className="h-4 w-4" />
               <span className="group-data-[collapsible=icon]:hidden">Logout</span>
             </Button>

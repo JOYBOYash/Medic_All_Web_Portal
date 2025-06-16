@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import type { Patient } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { useAuth } from "@/context/AuthContext";
+import { PATIENTS_COLLECTION, addDoc, collection, serverTimestamp, db } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 const patientFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -25,24 +29,49 @@ type PatientFormValues = z.infer<typeof patientFormSchema>;
 
 export default function NewPatientPage() {
   const router = useRouter();
+  const { user, loading: authLoading, userProfile } = useAuth();
+  const { toast } = useToast();
+  
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
-      age: undefined, // Or some default like 0
+      age: undefined, 
       sex: undefined,
       complications: "",
     },
   });
 
   const onSubmit = async (data: PatientFormValues) => {
-    console.log("New patient data:", data);
-    // Placeholder for Firebase save logic
-    // const newPatient: Omit<Patient, 'id' | 'doctorId' | 'createdAt' | 'updatedAt'> = data;
-    // await addDoc(collection(db, 'patients'), { ...newPatient, doctorId: "currentDoctorId", createdAt: new Date(), updatedAt: new Date() });
-    alert("New patient created (placeholder)!");
-    router.push("/doctor/patients");
+    if (!user || userProfile?.role !== 'doctor') {
+      toast({ variant: "destructive", title: "Error", description: "You are not authorized to perform this action." });
+      return;
+    }
+
+    try {
+      const newPatientData = {
+        ...data,
+        doctorId: user.uid, 
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      const docRef = await addDoc(collection(db, PATIENTS_COLLECTION), newPatientData);
+      toast({ title: "Success", description: `Patient "${data.name}" created successfully.` });
+      router.push("/doctor/patients");
+    } catch (error) {
+      console.error("Error creating patient:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to create patient. Please try again." });
+    }
   };
+
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+  if (!user || userProfile?.role !== 'doctor') {
+     router.push('/login'); // Or show an unauthorized message
+     return <div className="flex justify-center items-center h-full"><p>Unauthorized</p></div>;
+  }
+
 
   return (
     <div className="space-y-6">
@@ -142,8 +171,8 @@ export default function NewPatientPage() {
                 <Link href="/doctor/patients">
                   <Button type="button" variant="outline">Cancel</Button>
                 </Link>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  <Save className="mr-2 h-4 w-4" />
+                <Button type="submit" disabled={form.formState.isSubmitting || authLoading}>
+                  {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {form.formState.isSubmitting ? "Saving..." : "Save Patient"}
                 </Button>
               </div>
