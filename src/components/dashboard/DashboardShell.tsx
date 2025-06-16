@@ -46,43 +46,41 @@ interface DashboardShellProps {
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, userProfile, loading: authContextLoading, logout, isPageLoading, setPageLoading } = useAuth(); // Added isPageLoading
+  const { user, userProfile, loading: authContextLoading, logout, isPageLoading, setPageLoading } = useAuth();
 
   React.useEffect(() => {
-    // This effect handles initial auth loading and role checks
-    // The page-specific loading will be handled by individual pages setting `isPageLoading`
-    if (!authContextLoading) {
+    // This effect handles initial auth loading and role checks for DashboardShell protected routes
+    if (!authContextLoading) { // Only proceed if the auth context itself isn't loading user/profile
       if (!user) {
-        setPageLoading(true); // Set loading true before redirect
+        setPageLoading(true); // Indicate loading before redirect
         router.push("/login");
       } else if (userProfile && userProfile.role !== userRole) {
-        setPageLoading(true); // Set loading true before redirect
-        logout(); 
+        setPageLoading(true); // Indicate loading before redirect
+        logout(); // This will also trigger onAuthStateChanged
         router.push(`/login?error=role_mismatch&expected=${userRole}&actual=${userProfile.role}`);
       }
+      // If user exists and role matches, the page itself will turn off the loader.
     }
   }, [user, userProfile, authContextLoading, userRole, router, logout, setPageLoading]);
 
-  // This effect listens to pathname changes to set isPageLoading to true
-  // Pages are responsible for setting it to false when their content is loaded
+  // This effect triggers the page loader whenever the path changes within the shell.
+  // The newly loaded page component is then responsible for calling setPageLoading(false).
   React.useEffect(() => {
     setPageLoading(true);
-    // The new page will set it to false once its data is loaded
-    // No explicit false setting here to avoid race conditions with page's own loading logic
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, setPageLoading]);
+  }, [pathname, setPageLoading]); // setPageLoading is stable, effectively [pathname]
 
 
   if (authContextLoading || !user || !userProfile) {
+    // Show primary loader if auth context is still resolving user or user/profile is null
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
+  // This secondary check is mostly for role mismatch, which should be caught by the useEffect above.
+  // If somehow it's reached, show loader while redirect happens.
   if (userProfile.role !== userRole) {
-    // This case should ideally be caught by the useEffect above and redirect.
-    // Showing loader while redirecting.
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -110,7 +108,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           tooltip={item.title}
                           className="w-full justify-start"
                           onClick={() => {
-                            if(pathname !== item.href) setPageLoading(true);
+                            // setPageLoading(true) is handled by pathname effect
                           }}
                         >
                           <Link href={item.href}>
@@ -124,7 +122,6 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           isActive={item.submenu.some(sub => pathname === sub.href || pathname.startsWith(sub.href))}
                           tooltip={item.title}
                           className="w-full justify-start"
-                          // onClick for parent of submenu might not be needed if it doesn't navigate
                         >
                           {item.icon}
                           <span className="truncate">{item.title}</span>
@@ -136,7 +133,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                                  asChild 
                                  isActive={pathname === subItem.href}
                                  onClick={() => {
-                                    if(pathname !== subItem.href) setPageLoading(true);
+                                    // setPageLoading(true) is handled by pathname effect
                                   }}
                                >
                                 <Link href={subItem.href}>
@@ -164,21 +161,22 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
         
         <SidebarInset className="flex flex-col">
            <MainHeader /> 
-           <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto relative"> {/* Added relative positioning */}
+           <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto relative">
               {isPageLoading && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
                   <Loader2 className="h-10 w-10 animate-spin text-primary" />
                 </div>
               )}
-              {pageTitle && !isPageLoading && ( // Hide title if page is loading
+              {pageTitle && !isPageLoading && (
                 <h1 className="text-2xl sm:text-3xl font-bold font-headline tracking-tight mb-6 text-primary-foreground_dark">
                   {pageTitle}
                 </h1>
               )}
-              {!isPageLoading && children} {/* Render children only if not page loading */}
+              {!isPageLoading && children}
            </main>
         </SidebarInset>
     </SidebarProvider>
   );
 }
 
+    
