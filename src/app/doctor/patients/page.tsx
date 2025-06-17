@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Patient } from "@/types/homeoconnect";
-import { MoreHorizontal, PlusCircle, Search, User, Edit, Trash2, FileText, Loader2 } from "lucide-react";
+import { MoreHorizontal, PlusCircle, Search, User, Edit, Trash2, FileText, Loader2, Link as LinkIcon, Link2Off } from "lucide-react";
 import Link from "next/link";
 import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, deleteDoc, doc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 export default function DoctorPatientsPage() {
   const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
@@ -62,7 +63,8 @@ export default function DoctorPatientsPage() {
   const filteredPatients = useMemo(() => {
     return patients.filter(patient =>
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (patient.complications && patient.complications.toLowerCase().includes(searchTerm.toLowerCase()))
+      (patient.complications && patient.complications.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
@@ -84,7 +86,7 @@ export default function DoctorPatientsPage() {
   };
   
   if (authLoading) {
-    return null; // DashboardShell handles the primary loader
+    return null; 
   }
 
   return (
@@ -111,7 +113,7 @@ export default function DoctorPatientsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search patients by name or complication..."
+              placeholder="Search by name, email, or complication..."
               className="w-full pl-10 bg-background border rounded-lg"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -126,11 +128,13 @@ export default function DoctorPatientsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[80px] hidden sm:table-cell">Avatar</TableHead>
+                    <TableHead className="w-[60px] hidden sm:table-cell">Avatar</TableHead>
                     <TableHead>Name</TableHead>
+                    <TableHead className="hidden lg:table-cell">Email</TableHead>
                     <TableHead className="hidden md:table-cell">Age</TableHead>
                     <TableHead className="hidden md:table-cell">Sex</TableHead>
                     <TableHead>Complications</TableHead>
+                    <TableHead className="hidden sm:table-cell">Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -148,9 +152,21 @@ export default function DoctorPatientsPage() {
                         />
                       </TableCell>
                       <TableCell className="font-medium">{patient.name}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{patient.email || "N/A"}</TableCell>
                       <TableCell className="hidden md:table-cell">{patient.age}</TableCell>
                       <TableCell className="hidden md:table-cell capitalize">{patient.sex}</TableCell>
                       <TableCell className="max-w-xs truncate" title={patient.complications}>{patient.complications}</TableCell>
+                       <TableCell className="hidden sm:table-cell">
+                        {patient.authUid ? (
+                          <Badge variant="default" className="bg-green-500 hover:bg-green-600">
+                            <LinkIcon className="mr-1 h-3 w-3" /> Linked
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            <Link2Off className="mr-1 h-3 w-3" /> Not Linked
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

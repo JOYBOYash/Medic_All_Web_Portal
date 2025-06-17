@@ -27,9 +27,9 @@ export interface Patient {
   name: string;
   age: number;
   sex: 'male' | 'female' | 'other';
+  email?: string; // Email associated with this patient record by the doctor
   complications: string; // Text area for main health issues
-  // Optional: if patient creates an account, link their auth UID
-  authUid?: string | null; 
+  authUid?: string | null; // Firebase Auth UID of the linked patient user account
   createdAt: Timestamp; // Firestore Timestamp
   updatedAt: Timestamp; // Firestore Timestamp
 }
@@ -63,10 +63,10 @@ export interface Appointment {
   patientId: string; // Refers to Patient.id (the Firestore ID of the patient record)
   doctorId: string; // Doctor's Firebase UID
   appointmentDate: Timestamp; // Use Firestore Timestamp for dates
-  patientRemarks?: string; 
-  doctorNotes?: string; 
+  patientRemarks?: string;
+  doctorNotes?: string;
   painSeverity?: PainSeverity;
-  symptoms?: string[]; 
+  symptoms?: string[];
   prescriptions: PrescribedMedicine[];
   nextAppointmentDate?: Timestamp;
   status: 'scheduled' | 'completed' | 'cancelled';
@@ -94,3 +94,4 @@ export const commonSymptomsOptions: { value: string; label: string }[] = [
   { value: 'sore_throat', label: 'Sore Throat' },
   { value: 'loss_of_appetite', label: 'Loss of Appetite' },
 ];
+

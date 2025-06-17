@@ -9,18 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, LinkIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { PATIENTS_COLLECTION, doc, getFirestoreDoc, updateDoc, serverTimestamp, db } from "@/lib/firebase";
-import type { Patient } from "@/types/homeoconnect";
+import { PATIENTS_COLLECTION, USERS_COLLECTION, doc, getFirestoreDoc, updateDoc, serverTimestamp, db, query, where, getDocs, collection } from "@/lib/firebase";
+import type { Patient, UserProfile } from "@/types/homeoconnect";
 import { useToast } from "@/hooks/use-toast";
 
 const patientFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
   age: z.coerce.number().min(0, { message: "Age must be a positive number." }).max(120),
   sex: z.enum(["male", "female", "other"], { required_error: "Sex is required." }),
   complications: z.string().min(5, { message: "Please describe complications (min 5 characters)." }),
@@ -35,12 +36,14 @@ export default function EditPatientPage() {
 
   const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
   const { toast } = useToast();
-  const [dataLoading, setDataLoading] = useState(true); // Local data loading for this page
+  const [dataLoading, setDataLoading] = useState(true); 
+  const [initialEmail, setInitialEmail] = useState<string | undefined | null>(undefined); // To track original email
   
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
+      email: "",
       age: "" as unknown as number,
       sex: undefined,
       complications: "",
@@ -52,6 +55,7 @@ export default function EditPatientPage() {
       if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
         setDataLoading(false);
         setPageLoading(false);
+        if (!authLoading && !user) router.push("/login");
         return;
       }
       setDataLoading(true);
@@ -60,13 +64,15 @@ export default function EditPatientPage() {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         const docSnap = await getFirestoreDoc(patientDocRef);
         if (docSnap.exists() && docSnap.data().doctorId === user.uid) {
-          const patientData = docSnap.data() as Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>; 
+          const patientData = docSnap.data() as Patient; 
           form.reset({
             name: patientData.name,
+            email: patientData.email || "",
             age: patientData.age, 
             sex: patientData.sex,
             complications: patientData.complications,
           });
+          setInitialEmail(patientData.email);
         } else {
           toast({ variant: "destructive", title: "Error", description: "Patient not found or you do not have permission to edit." });
           router.push("/doctor/patients");
@@ -95,21 +101,62 @@ export default function EditPatientPage() {
       toast({ variant: "destructive", title: "Error", description: "You are not authorized or database is not available." });
       return;
     }
-    // Form submission loader is handled by form.formState.isSubmitting
-    // setPageLoading(true); // Not needed for submit, focus on form's own loader
-    try {
-      const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-      const existingPatientDoc = await getFirestoreDoc(patientDocRef);
-      if (!existingPatientDoc.exists() || existingPatientDoc.data()?.doctorId !== user.uid) {
-         toast({ variant: "destructive", title: "Error", description: "Patient not found or update not permitted." });
-         return;
-      }
-      const existingData = existingPatientDoc.data();
 
+    let authUidToUpdate: string | null = null; // Default to null (unlink)
+    const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+    const existingPatientDoc = await getFirestoreDoc(patientDocRef);
+
+    if (!existingPatientDoc.exists() || existingPatientDoc.data()?.doctorId !== user.uid) {
+       toast({ variant: "destructive", title: "Error", description: "Patient not found or update not permitted." });
+       return;
+    }
+    
+    const currentPatientData = existingPatientDoc.data() as Patient;
+    authUidToUpdate = currentPatientData.authUid || null; // Preserve existing link by default
+
+    // Only search for user account if email is provided and has changed or was initially undefined
+    if (data.email && (data.email !== initialEmail || initialEmail === undefined)) {
+      try {
+        const patientUserQuery = query(
+          collection(db, USERS_COLLECTION),
+          where("email", "==", data.email),
+          where("role", "==", "patient")
+        );
+        const querySnapshot = await getDocs(patientUserQuery);
+        if (!querySnapshot.empty) {
+          const foundPatientProfile = querySnapshot.docs[0].data() as UserProfile;
+          authUidToUpdate = querySnapshot.docs[0].id; // UID of the found user
+          toast({
+            title: "Patient Account Linked",
+            description: `Record updated to link with ${foundPatientProfile.displayName} (${data.email}).`,
+          });
+        } else {
+          authUidToUpdate = null; // Email provided, but no matching user found, so unlink
+          toast({
+            title: "No Matching Patient Account",
+            description: `No Medicall patient account found for ${data.email}. The record will be unlinked if it was previously linked.`,
+            duration: 7000,
+          });
+        }
+      } catch (error) {
+        console.error("Error searching for patient user account during edit:", error);
+        toast({ variant: "destructive", title: "Search Error", description: "Could not verify new patient email. Link status may be unchanged." });
+        // Potentially revert authUidToUpdate to initial state if search fails critically
+        authUidToUpdate = currentPatientData.authUid || null;
+      }
+    } else if (!data.email && initialEmail) {
+      // Email was removed, so unlink
+      authUidToUpdate = null;
+      toast({ title: "Patient Account Unlinked", description: "Email was removed, so the patient account link has been removed." });
+    }
+
+
+    try {
       await updateDoc(patientDocRef, {
         ...data, 
-        doctorId: existingData.doctorId, 
-        authUid: existingData.authUid !== undefined ? existingData.authUid : null, 
+        email: data.email || null,
+        authUid: authUidToUpdate,
+        doctorId: currentPatientData.doctorId, 
         updatedAt: serverTimestamp(),
       });
       toast({ title: "Success", description: `Patient "${data.name}" updated successfully.` });
@@ -117,12 +164,11 @@ export default function EditPatientPage() {
     } catch (error) {
       console.error("Error updating patient:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to update patient. Please try again." });
-    } 
-    // finally { setPageLoading(false); } // Not needed for submit
+    }
   };
 
-  if (authLoading || dataLoading) { // Use local dataLoading for this page's content visibility
-    return null; // DashboardShell handles primary loader if isPageLoading is true
+  if (authLoading || dataLoading) { 
+    return null; 
   }
 
   return (
@@ -142,7 +188,7 @@ export default function EditPatientPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline">Patient Information</CardTitle>
-          <CardDescription>Modify the fields below as needed.</CardDescription>
+          <CardDescription>Modify the fields below as needed. Updating the email can link/unlink their Medicall account.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -157,6 +203,20 @@ export default function EditPatientPage() {
                       <Input placeholder="e.g., John Doe" {...field} />
                     </FormControl>
                     <FormDescription>Enter the patient's full legal name.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Patient's Email Address (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="patient@example.com" {...field} />
+                    </FormControl>
+                    <FormDescription>Updates the email on record. If it matches a Medicall patient account, it will be linked.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

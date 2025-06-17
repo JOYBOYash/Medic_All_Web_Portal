@@ -8,18 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, LinkIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { PATIENTS_COLLECTION, addDoc, collection, serverTimestamp, db } from "@/lib/firebase";
+import { PATIENTS_COLLECTION, USERS_COLLECTION, addDoc, collection, serverTimestamp, db, query, where, getDocs } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
-import React, { useEffect } from "react"; // Added useEffect
+import React, { useEffect } from "react"; 
+import type { UserProfile } from "@/types/homeoconnect";
 
 const patientFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')), // Optional, but if provided must be valid email
   age: z.coerce.number().min(0, { message: "Age must be a positive number." }).max(120),
   sex: z.enum(["male", "female", "other"], { required_error: "Sex is required." }),
   complications: z.string().min(5, { message: "Please describe complications (min 5 characters)." }),
@@ -36,6 +38,7 @@ export default function NewPatientPage() {
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
       name: "",
+      email: "",
       age: "" as unknown as number,
       sex: undefined,
       complications: "",
@@ -43,8 +46,6 @@ export default function NewPatientPage() {
   });
 
   useEffect(() => {
-    // This page is primarily for form entry, not heavy data loading.
-    // So, we can set page loading to false quickly.
     setPageLoading(false);
   }, [setPageLoading]);
 
@@ -54,16 +55,48 @@ export default function NewPatientPage() {
       toast({ variant: "destructive", title: "Error", description: "You are not authorized or database is not available." });
       return;
     }
-    // Form submission has its own loader via form.formState.isSubmitting
+    
+    let authUid: string | null = null;
+    let foundPatientProfile: UserProfile | null = null;
+
+    if (data.email) {
+      try {
+        const patientUserQuery = query(
+          collection(db, USERS_COLLECTION),
+          where("email", "==", data.email),
+          where("role", "==", "patient")
+        );
+        const querySnapshot = await getDocs(patientUserQuery);
+        if (!querySnapshot.empty) {
+          foundPatientProfile = querySnapshot.docs[0].data() as UserProfile;
+          authUid = querySnapshot.docs[0].id; // This is the Firebase Auth UID
+          toast({
+            title: "Patient Account Found",
+            description: `Existing patient account for ${foundPatientProfile.displayName} (${data.email}) will be linked.`,
+          });
+        } else {
+           toast({
+            title: "No Existing Patient Account",
+            description: `No existing Medicall patient account found for ${data.email}. A new clinic record will be created. The patient can sign up later with this email to link their account.`,
+            duration: 7000,
+          });
+        }
+      } catch (error) {
+        console.error("Error searching for patient user account:", error);
+        toast({ variant: "destructive", title: "Search Error", description: "Could not verify patient email. Proceeding without linking." });
+      }
+    }
+
     try {
       const newPatientData = {
         ...data,
         doctorId: user.uid, 
-        authUid: null, 
+        authUid: authUid, 
+        email: data.email || null, // Save email even if no account linked
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      const docRef = await addDoc(collection(db, PATIENTS_COLLECTION), newPatientData);
+      await addDoc(collection(db, PATIENTS_COLLECTION), newPatientData);
       toast({ title: "Success", description: `Patient "${data.name}" created successfully.` });
       router.push("/doctor/patients");
     } catch (error) {
@@ -73,7 +106,7 @@ export default function NewPatientPage() {
   };
 
   if (authLoading) {
-    return null; // DashboardShell handles primary loader
+    return null; 
   }
 
 
@@ -94,7 +127,7 @@ export default function NewPatientPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline">Patient Information</CardTitle>
-          <CardDescription>Please fill in all required fields accurately.</CardDescription>
+          <CardDescription>Please fill in all required fields accurately. Providing an email can link to an existing patient's Medicall account.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -109,6 +142,20 @@ export default function NewPatientPage() {
                       <Input placeholder="e.g., John Doe" {...field} />
                     </FormControl>
                     <FormDescription>Enter the patient's full legal name.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Patient's Email Address (Optional)</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="patient@example.com" {...field} />
+                    </FormControl>
+                    <FormDescription>If the patient has a Medicall account, using their registered email will link it.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -187,3 +234,4 @@ export default function NewPatientPage() {
     </div>
   );
 }
+

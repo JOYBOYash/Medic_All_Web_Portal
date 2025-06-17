@@ -10,12 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { ArrowLeft, Edit, PlusCircle, User as UserIcon, CalendarDays, Pill, BriefcaseMedical, Loader2, MoreHorizontal, Eye, Trash2, FileText } from "lucide-react";
+import { ArrowLeft, Edit, PlusCircle, User as UserIcon, CalendarDays, Pill, BriefcaseMedical, Loader2, MoreHorizontal, Eye, Trash2, FileText, Link as LinkIcon, Link2Off, Mail } from "lucide-react";
 import type { Patient, Appointment } from "@/types/homeoconnect";
 import { useAuth } from "@/context/AuthContext";
 import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, doc, getFirestoreDoc, collection, query, where, getDocs, Timestamp, deleteDoc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 
 
 export default function PatientDetailPage() {
@@ -40,7 +41,6 @@ export default function PatientDetailPage() {
       setDataLoading(true);
       setPageLoading(true);
       try {
-        // Fetch patient details
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         const patientDocSnap = await getFirestoreDoc(patientDocRef);
 
@@ -57,20 +57,19 @@ export default function PatientDetailPage() {
           return; 
         }
 
-        // Fetch patient's appointments
         const appointmentsQuery = query(
           collection(db, APPOINTMENTS_COLLECTION),
           where("patientId", "==", patientId),
           where("doctorId", "==", user.uid) 
         );
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
-        const fetchedAppointments = appointmentsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          appointmentDate: (doc.data().appointmentDate as Timestamp).toDate(),
-          createdAt: (doc.data().createdAt as Timestamp).toDate(),
-          updatedAt: (doc.data().updatedAt as Timestamp).toDate(),
-          nextAppointmentDate: doc.data().nextAppointmentDate ? (doc.data().nextAppointmentDate as Timestamp).toDate() : undefined,
+        const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => ({ // Corrected doc to docSnap
+          id: docSnap.id,
+          ...docSnap.data(),
+          appointmentDate: (docSnap.data().appointmentDate as Timestamp).toDate(),
+          createdAt: (docSnap.data().createdAt as Timestamp).toDate(),
+          updatedAt: (docSnap.data().updatedAt as Timestamp).toDate(),
+          nextAppointmentDate: docSnap.data().nextAppointmentDate ? (docSnap.data().nextAppointmentDate as Timestamp).toDate() : undefined,
         } as Appointment));
         setAppointments(fetchedAppointments);
 
@@ -124,11 +123,11 @@ export default function PatientDetailPage() {
   };
 
 
-  if (authLoading || dataLoading && !patient) { // Show loader if auth is loading OR data is loading AND patient isn't set yet
-    return null; // DashboardShell handles the primary loader if isPageLoading is true
+  if (authLoading || (dataLoading && !patient)) { 
+    return null; 
   }
 
-  if (!patient && !dataLoading) { // If not loading and patient is still null (e.g. after error or redirect)
+  if (!patient && !dataLoading) { 
     return (
         <div className="space-y-6">
             <Link href="/doctor/patients">
@@ -139,7 +138,6 @@ export default function PatientDetailPage() {
     );
   }
   
-  // Ensure patient is not null before rendering the main content
   if (!patient) return null;
 
 
@@ -153,7 +151,18 @@ export default function PatientDetailPage() {
             </Button>
             </Link>
             <div>
-            <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">{patient.name}</h1>
+            <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark flex items-center gap-2">
+                {patient.name}
+                {patient.authUid ? (
+                    <Badge variant="default" className="bg-green-100 text-green-700 text-xs px-2 py-0.5">
+                        <LinkIcon className="mr-1 h-3 w-3"/> Linked
+                    </Badge>
+                ) : (
+                    <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                        <Link2Off className="mr-1 h-3 w-3"/> Not Linked
+                    </Badge>
+                )}
+            </h1>
             <p className="text-muted-foreground">Patient Details & History</p>
             </div>
         </div>
@@ -186,6 +195,10 @@ export default function PatientDetailPage() {
           <div>
             <p className="text-sm font-medium text-muted-foreground">Sex</p>
             <p className="text-lg capitalize">{patient.sex}</p>
+          </div>
+          <div className="lg:col-span-1">
+            <p className="text-sm font-medium text-muted-foreground flex items-center gap-1"><Mail className="h-4 w-4"/>Email</p>
+            <p className="text-base">{patient.email || "Not provided"}</p>
           </div>
           <div className="md:col-span-2 lg:col-span-3">
             <p className="text-sm font-medium text-muted-foreground">Health Complications / History</p>
