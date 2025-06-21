@@ -78,7 +78,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Check if the user was created in the last 10 seconds.
           const isNewUser = (now - creationTime) < 10000;
 
-          if (error.message === "User profile not found in Firestore." && isNewUser) {
+          if (error.message?.includes("User profile not found in Firestore") && isNewUser) {
             // This is an expected race condition during signup. The user document is still being created.
             // We can safely ignore this error, as the user will be redirected to the login page
             // by the signup flow, and by then, the document will exist.
@@ -89,7 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             toast({
               variant: "destructive",
               title: "Login Failed",
-              description: error.message === "User profile not found in Firestore."
+              description: error.message?.includes("User profile not found in Firestore")
                 ? "Your user profile could not be found. Please contact support."
                 : "An error occurred while fetching your profile.",
             });
