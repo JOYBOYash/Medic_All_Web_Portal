@@ -131,6 +131,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
     }
+    
+    // If no redirect has occurred, we can safely turn off the page loader.
+    setIsPageLoading(false);
+
   }, [user, userProfile, loading, pathname, router, logoutHandler]);
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
