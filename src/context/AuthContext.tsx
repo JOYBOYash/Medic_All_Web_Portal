@@ -3,8 +3,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, USERS_COLLECTION, getFirestoreDoc, setFirestoreDoc } from '@/lib/firebase'; // Adjusted imports
+import { doc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db, USERS_COLLECTION } from '@/lib/firebase';
 import type { UserProfile } from '@/types/homeoconnect';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from '@/hooks/use-toast';
@@ -12,17 +12,27 @@ import { toast } from '@/hooks/use-toast';
 interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
-  loading: boolean; // Indicates auth context's own loading (e.g., fetching profile)
-  isPageLoading: boolean; // Global page loading indicator for navigation/content readiness
+  loading: boolean;
+  isPageLoading: boolean;
   setPageLoading: (isLoading: boolean) => void;
-  login: (email: string, password: string) => Promise<UserCredentialWrapper | { error: string }>;
-  signup: (email: string, password: string, role: 'doctor' | 'patient', displayName: string) => Promise<UserCredentialWrapper | { error: string, errorCode?: string }>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  signup: (email: string, password: string, role: 'doctor' | 'patient', displayName: string) => Promise<SignupResult>;
   logout: () => Promise<void>;
   refreshUserProfile: () => Promise<void>;
 }
 
-interface UserCredentialWrapper {
-  user: User;
+interface LoginResult {
+  success: boolean;
+  error?: string;
+  user?: User;
+  userProfile?: UserProfile;
+}
+
+interface SignupResult {
+    success: boolean;
+    error?: string;
+    errorCode?: string;
+    user?: User;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,121 +40,118 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true); // Auth context's internal loading state
-  const [isPageLoading, setIsPageLoading] = useState(true); // Global page loading state
+  const [loading, setLoading] = useState(true);
+  const [isPageLoading, setIsPageLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
-  const fetchUserProfile = useCallback(async (firebaseUser: User): Promise<UserProfile | null> => {
-    const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-    const userDocSnap = await getFirestoreDoc(userDocRef);
-    if (userDocSnap.exists()) {
-        const profileData = userDocSnap.data() as UserProfile;
-        return profileData;
-    }
-    return null;
-  }, []);
-
-  const logoutHandler = useCallback(async (options?: { suppressRedirect?: boolean }) => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Logout error:", error);
-    } finally {
-      setUser(null);
-      setUserProfile(null);
-      setLoading(false);
-      if (!options?.suppressRedirect) {
-        router.push('/login');
-      }
-    }
-  }, [router]);
-
   useEffect(() => {
+    // This effect handles the initial authentication state and subsequent changes.
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
       if (firebaseUser) {
-        let profile = await fetchUserProfile(firebaseUser);
-
-        // Handle signup race condition where profile might not exist yet
-        if (!profile) {
-            console.warn("User profile not found, retrying in 1.5s...");
-            await new Promise(res => setTimeout(res, 1500));
-            profile = await fetchUserProfile(firebaseUser);
+        // If we already have the profile for this user, don't refetch
+        if (userProfile && userProfile.id === firebaseUser.uid) {
+            setLoading(false);
+            setIsPageLoading(false); // Stop global loader if profile is already loaded
+            return;
         }
         
-        if (profile) {
-            setUserProfile(profile);
-            setUser(firebaseUser);
-        } else {
-            console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found after retry. Logging out.`);
-            await logoutHandler({ suppressRedirect: true });
+        // Fetch user profile from Firestore.
+        const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+        try {
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+                const profile = userDocSnap.data() as UserProfile;
+                setUser(firebaseUser);
+                setUserProfile(profile);
+            } else {
+                // This case should ideally not happen if signup is atomic.
+                // But if it does, it's a critical error.
+                console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found. Logging out.`);
+                await signOut(auth); // This will trigger the onAuthStateChanged listener again to clear state.
+            }
+        } catch(e) {
+            console.error("Error fetching user profile during auth state change:", e);
+            await signOut(auth);
         }
+
       } else {
+        // No user is signed in
         setUser(null);
         setUserProfile(null);
       }
       setLoading(false);
+      setIsPageLoading(false);
     });
-    return () => unsubscribe();
-  }, [fetchUserProfile, logoutHandler]);
 
+    return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
   useEffect(() => {
-    // This effect handles route protection AFTER the auth state is resolved.
-    if (loading) return; // Wait until the initial auth check is complete.
+    // This effect handles route protection AFTER the initial auth state is resolved.
+    if (loading) return; // Don't run route protection while still loading auth state
 
     const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
     const isDoctorRoute = pathname.startsWith('/doctor');
     const isPatientRoute = pathname.startsWith('/patient');
 
     if (user && userProfile) {
-      // User is logged in.
+      // User is logged in
       if (isAuthPage) {
-        // If on an auth page, redirect to the correct dashboard.
+        // If on an auth page, redirect to the appropriate dashboard
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
-        return;
+      } else {
+        // If on a protected page, verify role
+        const isCorrectDoctorRoute = isDoctorRoute && userProfile.role === 'doctor';
+        const isCorrectPatientRoute = isPatientRoute && userProfile.role === 'patient';
+
+        // If user is on a dashboard that doesn't match their role
+        if ((isDoctorRoute || isPatientRoute) && !isCorrectDoctorRoute && !isCorrectPatientRoute) {
+          toast({ variant: "destructive", title: "Access Denied", description: "Incorrect role for this dashboard." });
+          logout(); // The logout function will redirect to /login
+        }
       }
-
-      // Check for role mismatch on protected routes.
-      const isCorrectDoctorRoute = isDoctorRoute && userProfile.role === 'doctor';
-      const isCorrectPatientRoute = isPatientRoute && userProfile.role === 'patient';
-
-      if ((isDoctorRoute || isPatientRoute) && !isCorrectDoctorRoute && !isCorrectPatientRoute) {
-        toast({ variant: "destructive", title: "Access Denied", description: "You are not authorized for this dashboard." });
-        logoutHandler();
-      }
-
     } else {
-      // User is not logged in.
+      // No user is logged in
       if (isDoctorRoute || isPatientRoute) {
-        // If on a protected route, redirect to login.
+        // If trying to access a protected route, redirect to login
         router.replace('/login');
       }
     }
-  }, [user, userProfile, loading, pathname, router, logoutHandler]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userProfile, loading, pathname, router]);
 
-  const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
+  const login = async (email: string, password: string): Promise<LoginResult> => {
+    setIsPageLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting state and redirection
-      return { user: userCredential.user };
+      // onAuthStateChanged will handle setting user and userProfile state.
+      // We don't need to manually set it here anymore, preventing race conditions.
+      // The useEffect will handle redirection.
+      return { success: true, user: userCredential.user };
     } catch (error: any) {
-      let errorMessage = "Failed to login. Please check your credentials.";
+      let errorMessage = "Failed to login.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
       }
-      return { error: errorMessage };
+      toast({ variant: "destructive", title: "Login Failed", description: errorMessage });
+      setIsPageLoading(false);
+      return { success: false, error: errorMessage };
     }
   };
 
-  const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<UserCredentialWrapper | { error: string, errorCode?: string }> => {
+  const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<SignupResult> => {
+    setIsPageLoading(true);
     try {
+      // This part remains the same: create user in Auth.
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-      const newUserProfile: Omit<UserProfile, 'createdAt' | 'updatedAt' | 'id'> = {
+      // Create the profile document atomically.
+      const newUserProfile: Omit<UserProfile, 'createdAt' | 'updatedAt'> = {
+        id: firebaseUser.uid,
         email: firebaseUser.email,
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
@@ -152,28 +159,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         contactNumber: "",
         address: "",
       };
-      await setFirestoreDoc(userDocRef, {
+      
+      const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+      await setDoc(userDocRef, {
         ...newUserProfile,
-        id: firebaseUser.uid, // Ensure ID is written to the document
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      // onAuthStateChanged will handle setting state and redirection
-      return { user: firebaseUser };
+      
+      // Crucially, onAuthStateChanged will now reliably find this document.
+      // We don't set local state here; we let the listener do its job.
+      return { success: true, user: firebaseUser };
+
     } catch (error: any) {
       let errorMessage = "Failed to signup. Please try again.";
       if (error.code === 'auth/email-already-in-use') errorMessage = "This email address is already in use.";
       else if (error.code === 'auth/weak-password') errorMessage = "Password is too weak.";
-      if (error.code !== 'auth/email-already-in-use' && error.code !== 'auth/weak-password') console.error("Signup error:", error); 
-      return { error: errorMessage, errorCode: error.code };
+      toast({ variant: "destructive", title: "Signup Failed", description: errorMessage });
+      setIsPageLoading(false);
+      return { success: false, error: errorMessage, errorCode: error.code };
     }
   };
   
+  const logoutHandler = useCallback(async () => {
+    setIsPageLoading(true);
+    try {
+      await signOut(auth);
+      // onAuthStateChanged will clear user/userProfile state.
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({ variant: "destructive", title: "Logout Failed", description: "Could not log out. Please try again." });
+    } finally {
+      // Redirect is now handled by the route protection useEffect.
+      setIsPageLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const refreshUserProfile = async () => {
     if (user) {
-        const profile = await fetchUserProfile(user);
-        if (profile) {
-            setUserProfile(profile);
+        const userDocRef = doc(db, USERS_COLLECTION, user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+            setUserProfile(userDocSnap.data() as UserProfile);
         }
     }
   };
