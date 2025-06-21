@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -62,10 +62,8 @@ export default function NewAppointmentPage() {
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [dataLoading, setDataLoading] = useState(true); // Local data loading
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-
 
   const form = useForm<AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
@@ -86,42 +84,35 @@ export default function NewAppointmentPage() {
     name: "prescriptions",
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user || !db || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false);
-        return;
-      }
-      setDataLoading(true);
-      setPageLoading(true);
-      try {
-        const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
-        const patientsSnapshot = await getDocs(patientsQuery);
-        const fetchedPatients = patientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Patient));
-        setPatients(fetchedPatients);
+  const fetchData = useCallback(async () => {
+    if (!user || !db || userProfile?.role !== 'doctor') return;
+    setPageLoading(true);
+    try {
+      const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+      const patientsSnapshot = await getDocs(patientsQuery);
+      const fetchedPatients = patientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Patient));
+      setPatients(fetchedPatients);
 
-        const medicinesQuery = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
-        const medicinesSnapshot = await getDocs(medicinesQuery);
-        const fetchedMedicines = medicinesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
-        setMedicines(fetchedMedicines);
+      const medicinesQuery = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
+      const medicinesSnapshot = await getDocs(medicinesQuery);
+      const fetchedMedicines = medicinesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
+      setMedicines(fetchedMedicines);
 
-      } catch (error) {
-        console.error("Error fetching data for new appointment: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Could not load patient or medicine data." });
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
-      }
-    };
-    if (!authLoading && user && userProfile?.role === 'doctor') {
-      fetchData();
-    } else if (!authLoading && !user) {
-      setDataLoading(false);
+    } catch (error) {
+      console.error("Error fetching data for new appointment: ", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not load patient or medicine data." });
+    } finally {
       setPageLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, authLoading, toast]);
+  }, [user, userProfile, toast, setPageLoading]);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      fetchData();
+    } else if (!authLoading) {
+      setPageLoading(false);
+    }
+  }, [user, authLoading, fetchData, setPageLoading]);
 
   useEffect(() => {
     const selectedDate = form.watch("appointmentDate");
@@ -146,7 +137,7 @@ export default function NewAppointmentPage() {
         return;
     }
     setIsSubmittingForm(true);
-    // setPageLoading(true); // Optional: For form submissions if they take long
+    setPageLoading(true);
 
     const appointmentDateTime = new Date(data.appointmentDate);
     const [hours, minutes] = data.appointmentTime.split(':').map(Number);
@@ -180,12 +171,12 @@ export default function NewAppointmentPage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to schedule appointment. Please try again." });
     } finally {
         setIsSubmittingForm(false);
-        // setPageLoading(false); // Reset if set for submission
+        setPageLoading(false);
     }
   };
 
-  if (authLoading || dataLoading) { // Use local dataLoading for form readiness
-    return null; // DashboardShell handles page loader
+  if (authLoading) {
+    return null;
   }
 
   return (
@@ -472,7 +463,7 @@ export default function NewAppointmentPage() {
             <Link href={preselectedPatientId ? `/doctor/patients/${preselectedPatientId}` : "/doctor/appointments"}>
               <Button type="button" variant="outline" disabled={isSubmittingForm}>Cancel</Button>
             </Link>
-            <Button type="submit" disabled={isSubmittingForm || authLoading || dataLoading || patients.length === 0}>
+            <Button type="submit" disabled={isSubmittingForm || authLoading || patients.length === 0}>
               {isSubmittingForm ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {isSubmittingForm ? "Saving..." : "Schedule Appointment"}
             </Button>
@@ -482,6 +473,3 @@ export default function NewAppointmentPage() {
     </div>
   );
 }
-
-
-    

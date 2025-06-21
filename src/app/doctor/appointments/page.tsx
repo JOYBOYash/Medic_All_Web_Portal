@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar"; 
@@ -76,65 +76,61 @@ export default function DoctorAppointmentsPage() {
   const [appointments, setAppointments] = useState<EnrichedAppointment[]>([]); 
   const [dataLoading, setDataLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAppointmentsAndPatients = async () => {
-      if (!user || !db || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false);
-        return;
-      }
-      setDataLoading(true);
-      // setPageLoading(true); // Let DashboardShell handle initial page load true
-      try {
-        const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
-        const patientsSnapshot = await getDocs(patientsQuery);
-        const patientsMap = new Map<string, Patient>();
-        patientsSnapshot.docs.forEach(doc => patientsMap.set(doc.id, { id: doc.id, ...doc.data() } as Patient));
+  const fetchAppointmentsAndPatients = useCallback(async () => {
+    if (!user || !db || userProfile?.role !== 'doctor') return;
 
-        const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("doctorId", "==", user.uid));
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-        
-        const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => {
-          const aptData = docSnap.data() as Appointment;
-          const patient = patientsMap.get(aptData.patientId);
-          return {
-            ...aptData,
-            id: docSnap.id,
-            appointmentDate: (aptData.appointmentDate as unknown as Timestamp).toDate(),
-            createdAt: (aptData.createdAt as unknown as Timestamp).toDate(),
-            updatedAt: (aptData.updatedAt as unknown as Timestamp).toDate(),
-            nextAppointmentDate: aptData.nextAppointmentDate ? (aptData.nextAppointmentDate as unknown as Timestamp).toDate() : undefined,
-            patientName: patient?.name || "Unknown Patient",
-            patientAvatar: `https://placehold.co/40x40.png?text=${(patient?.name || 'P').charAt(0)}`,
-          } as EnrichedAppointment;
+    setDataLoading(true);
+    setPageLoading(true);
+    try {
+      const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+      const patientsSnapshot = await getDocs(patientsQuery);
+      const patientsMap = new Map<string, Patient>();
+      patientsSnapshot.docs.forEach(doc => patientsMap.set(doc.id, { id: doc.id, ...doc.data() } as Patient));
+
+      const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("doctorId", "==", user.uid));
+      const appointmentsSnapshot = await getDocs(appointmentsQuery);
+      
+      const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => {
+        const aptData = docSnap.data() as Appointment;
+        const patient = patientsMap.get(aptData.patientId);
+        return {
+          ...aptData,
+          id: docSnap.id,
+          appointmentDate: (aptData.appointmentDate as unknown as Timestamp).toDate(),
+          createdAt: (aptData.createdAt as unknown as Timestamp).toDate(),
+          updatedAt: (aptData.updatedAt as unknown as Timestamp).toDate(),
+          nextAppointmentDate: aptData.nextAppointmentDate ? (aptData.nextAppointmentDate as unknown as Timestamp).toDate() : undefined,
+          patientName: patient?.name || "Unknown Patient",
+          patientAvatar: `https://placehold.co/40x40.png?text=${(patient?.name || 'P').charAt(0)}`,
+        } as EnrichedAppointment;
+      });
+      setAppointments(fetchedAppointments);
+
+    } catch (err: any) {
+      console.error("Error fetching appointments: ", err);
+      if (err.code === 'failed-precondition' && err.message?.toLowerCase().includes('query requires an index')) {
+        toast({
+          variant: "destructive",
+          title: "Database Index Required",
+          description: "A database index is needed to load appointments. Please check the Firebase console to create it.",
+          duration: 20000 
         });
-        setAppointments(fetchedAppointments);
-
-      } catch (err: any) {
-        console.error("Error fetching appointments: ", err);
-        if (err.code === 'failed-precondition' && err.message && err.message.toLowerCase().includes('query requires an index')) {
-          toast({
-            variant: "destructive",
-            title: "Database Index Required",
-            description: "A database index is needed to load appointments. Please check the Firebase console to create the required index. The page may not load correctly until this is done.",
-            duration: 20000 
-          });
-        } else {
-          toast({ variant: "destructive", title: "Error", description: "Could not load appointments." });
-        }
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Could not load appointments." });
       }
-    };
-
-    if (!authLoading && user && userProfile?.role === 'doctor') {
-      fetchAppointmentsAndPatients();
-    } else if (!authLoading && !user) {
+    } finally {
       setDataLoading(false);
       setPageLoading(false);
     }
-  }, [user, userProfile, authLoading, toast, setPageLoading]);
+  }, [user, userProfile, toast, setPageLoading]);
+  
+  useEffect(() => {
+    if (!authLoading && user) {
+      fetchAppointmentsAndPatients();
+    } else if (!authLoading) {
+      setPageLoading(false);
+    }
+  }, [user, authLoading, fetchAppointmentsAndPatients, setPageLoading]);
 
   const { todayAppointments, tomorrowAppointments, dayAfterAppointments } = useMemo(() => {
     const today = startOfDay(new Date());

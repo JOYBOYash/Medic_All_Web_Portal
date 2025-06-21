@@ -31,7 +31,6 @@ export default function EditPatientPage() {
 
   const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
   const { toast } = useToast();
-  const [dataLoading, setDataLoading] = useState(true);
   const [patientData, setPatientData] = useState<Patient | null>(null);
   
   const form = useForm<PatientFormValues>({
@@ -42,13 +41,8 @@ export default function EditPatientPage() {
   });
 
   const fetchPatient = useCallback(async () => {
-    if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
-      setDataLoading(false);
-      setPageLoading(false);
-      if (!authLoading && !user) router.push("/login");
-      return;
-    }
-    setDataLoading(true);
+    if (!user || !db || !patientId || userProfile?.role !== 'doctor') return;
+    
     setPageLoading(true);
     try {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
@@ -67,20 +61,17 @@ export default function EditPatientPage() {
       console.error("Error fetching patient for edit:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to load patient data for editing." });
     } finally {
-      setDataLoading(false);
       setPageLoading(false);
     }
-  }, [patientId, user, userProfile, authLoading, router, toast, form, setPageLoading]);
+  }, [patientId, user, userProfile, router, toast, form, setPageLoading]);
 
   useEffect(() => {
-    if (!authLoading && user && userProfile?.role === 'doctor') {
+    if (!authLoading && user) {
       fetchPatient();
-    } else if (!authLoading && !user) {
-       setDataLoading(false);
+    } else if (!authLoading) {
        setPageLoading(false);
-       router.push("/login");
     }
-  }, [authLoading, user, userProfile, router, fetchPatient]);
+  }, [authLoading, user, fetchPatient, setPageLoading]);
 
   const onSubmit = async (data: PatientFormValues) => {
     if (!user || !db || !patientId || userProfile?.role !== 'doctor' || !patientData) {
@@ -91,6 +82,7 @@ export default function EditPatientPage() {
     const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
 
     try {
+      setPageLoading(true);
       await updateDoc(patientDocRef, {
         complications: data.complications,
         updatedAt: serverTimestamp(),
@@ -100,15 +92,13 @@ export default function EditPatientPage() {
     } catch (error) {
       console.error("Error updating patient:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to update patient. Please try again." });
+    } finally {
+      setPageLoading(false);
     }
   };
 
-  if (authLoading || dataLoading) { 
+  if (authLoading || !patientData) { 
     return null; 
-  }
-
-  if (!patientData) {
-    return <div>Patient not found.</div>
   }
 
   return (
@@ -173,7 +163,7 @@ export default function EditPatientPage() {
                 <Link href={patientId ? `/doctor/patients/${patientId}` : "/doctor/patients"}>
                   <Button type="button" variant="outline" disabled={form.formState.isSubmitting}>Cancel</Button>
                 </Link>
-                <Button type="submit" disabled={form.formState.isSubmitting || authLoading || dataLoading}>
+                <Button type="submit" disabled={form.formState.isSubmitting}>
                   {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
                 </Button>

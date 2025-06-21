@@ -35,33 +35,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const fetchUserProfile = useCallback(async (firebaseUser: User): Promise<UserProfile> => {
+  const fetchUserProfile = useCallback(async (firebaseUser: User): Promise<UserProfile | null> => {
     const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
     const userDocSnap = await getFirestoreDoc(userDocRef);
     if (userDocSnap.exists()) {
         const profileData = userDocSnap.data() as UserProfile;
         return profileData;
-    } else {
-        throw new Error("User profile not found in Firestore.");
     }
+    return null;
   }, []);
 
   const logoutHandler = useCallback(async (options?: { suppressRedirect?: boolean }) => {
-    setIsPageLoading(true);
     try {
       await signOut(auth);
-      // onAuthStateChanged will set user to null, which will trigger the useEffect below
-      if (!options?.suppressRedirect) {
-        router.push('/login');
-      }
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
       setUser(null);
       setUserProfile(null);
       setLoading(false);
-      setIsPageLoading(false);
-       if (!options?.suppressRedirect) {
+      if (!options?.suppressRedirect) {
         router.push('/login');
       }
     }
@@ -71,102 +64,70 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
       if (firebaseUser) {
-        try {
-          const profile = await fetchUserProfile(firebaseUser);
-          setUserProfile(profile);
-          setUser(firebaseUser);
-        } catch (error: any) {
-          // This catch block handles the case where fetching the profile fails.
-          // The most common reason is a race condition on new user signup.
-          const isNewUser = firebaseUser.metadata.creationTime === firebaseUser.metadata.lastSignInTime;
+        let profile = await fetchUserProfile(firebaseUser);
 
-          if (isNewUser && error.message.toLowerCase().includes("not found")) {
-            // New user, profile might not be ready. Retry once.
-            console.warn("New user profile not found, retrying...");
-            await new Promise(res => setTimeout(res, 2000)); // Wait for Firestore
-            try {
-              const profile = await fetchUserProfile(firebaseUser);
-              setUserProfile(profile);
-              setUser(firebaseUser);
-            } catch (retryError: any) {
-              console.error("Error fetching user profile on retry for UID:", firebaseUser.uid, retryError);
-              toast({
-                variant: "destructive",
-                title: "Login Failed",
-                description: "Your user profile could not be found after signup. Please try logging in.",
-              });
-              await logoutHandler({ suppressRedirect: true });
-            }
-          } else {
-            // This is an existing user with a missing profile, or a different kind of error.
-            console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
-            toast({
-              variant: "destructive",
-              title: "Login Failed",
-              description: "Your user profile could not be loaded. Please contact support.",
-            });
+        // Handle signup race condition where profile might not exist yet
+        if (!profile) {
+            console.warn("User profile not found, retrying in 1.5s...");
+            await new Promise(res => setTimeout(res, 1500));
+            profile = await fetchUserProfile(firebaseUser);
+        }
+        
+        if (profile) {
+            setUserProfile(profile);
+            setUser(firebaseUser);
+        } else {
+            console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found after retry. Logging out.`);
             await logoutHandler({ suppressRedirect: true });
-          }
-        } finally {
-           setLoading(false);
         }
       } else {
         setUser(null);
         setUserProfile(null);
-        setLoading(false);
       }
+      setLoading(false);
     });
     return () => unsubscribe();
   }, [fetchUserProfile, logoutHandler]);
 
   useEffect(() => {
     // This effect handles route protection AFTER the auth state is resolved.
-    if (loading) {
-      // If auth is still loading, we do nothing and wait.
-      return;
-    }
+    if (loading) return; // Wait until the initial auth check is complete.
 
     const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
-    const isProtectedPath = pathname.startsWith('/doctor') || pathname.startsWith('/patient');
+    const isDoctorRoute = pathname.startsWith('/doctor');
+    const isPatientRoute = pathname.startsWith('/patient');
 
     if (user && userProfile) {
-      // User is logged in
+      // User is logged in.
       if (isAuthPage) {
+        // If on an auth page, redirect to the correct dashboard.
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
         return;
       }
 
-      const isCorrectPath = (pathname.startsWith('/doctor') && userProfile.role === 'doctor') ||
-                            (pathname.startsWith('/patient') && userProfile.role === 'patient');
+      // Check for role mismatch on protected routes.
+      const isCorrectDoctorRoute = isDoctorRoute && userProfile.role === 'doctor';
+      const isCorrectPatientRoute = isPatientRoute && userProfile.role === 'patient';
 
-      if (isProtectedPath && !isCorrectPath) {
-        // Logged in, but wrong role.
-        toast({
-          variant: "destructive",
-          title: "Access Denied",
-          description: "You are not authorized for that role's dashboard.",
-        });
+      if ((isDoctorRoute || isPatientRoute) && !isCorrectDoctorRoute && !isCorrectPatientRoute) {
+        toast({ variant: "destructive", title: "Access Denied", description: "You are not authorized for this dashboard." });
         logoutHandler();
-        return;
       }
+
     } else {
-      // User is not logged in
-      if (isProtectedPath) {
+      // User is not logged in.
+      if (isDoctorRoute || isPatientRoute) {
+        // If on a protected route, redirect to login.
         router.replace('/login');
-        return;
       }
     }
-    
-    // If we reach here, it means no redirect is necessary for the current page.
-    // So, we ensure the page loader is off, allowing the page to render.
-    setIsPageLoading(false);
-
   }, [user, userProfile, loading, pathname, router, logoutHandler]);
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged will handle setting state and redirection
       return { user: userCredential.user };
     } catch (error: any) {
       let errorMessage = "Failed to login. Please check your credentials.";
@@ -183,8 +144,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const firebaseUser = userCredential.user;
       
       const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-      const newUserProfile: Omit<UserProfile, 'createdAt' | 'updatedAt'> = {
-        id: firebaseUser.uid,
+      const newUserProfile: Omit<UserProfile, 'createdAt' | 'updatedAt' | 'id'> = {
         email: firebaseUser.email,
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
@@ -194,9 +154,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       await setFirestoreDoc(userDocRef, {
         ...newUserProfile,
+        id: firebaseUser.uid, // Ensure ID is written to the document
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      // onAuthStateChanged will handle setting state and redirection
       return { user: firebaseUser };
     } catch (error: any) {
       let errorMessage = "Failed to signup. Please try again.";
@@ -209,16 +171,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   
   const refreshUserProfile = async () => {
     if (user) {
-        await fetchUserProfile(user);
+        const profile = await fetchUserProfile(user);
+        if (profile) {
+            setUserProfile(profile);
+        }
     }
   };
 
-  const setPageLoadingHandler = (isLoading: boolean) => {
-    setIsPageLoading(isLoading);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, isPageLoading, setPageLoading: setPageLoadingHandler, login, signup, logout: logoutHandler, refreshUserProfile }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, isPageLoading, setPageLoading: setIsPageLoading, login, signup, logout: logoutHandler, refreshUserProfile }}>
       {children}
     </AuthContext.Provider>
   );

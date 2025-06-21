@@ -29,15 +29,10 @@ export default function PatientDetailPage() {
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
 
   const fetchPatientData = useCallback(async () => {
-    if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
-      setDataLoading(false);
-      setPageLoading(false);
-      return;
-    }
-    setDataLoading(true);
+    if (!user || !db || !patientId || userProfile?.role !== 'doctor') return;
+    
     setPageLoading(true);
     try {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
@@ -76,20 +71,17 @@ export default function PatientDetailPage() {
       console.error("Error fetching patient data: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not load patient data." });
     } finally {
-      setDataLoading(false);
       setPageLoading(false);
     }
   }, [patientId, user, userProfile, setPageLoading, toast, router]);
 
   useEffect(() => {
-    if (!authLoading && user && userProfile?.role === 'doctor') {
+    if (!authLoading && user) {
       fetchPatientData();
-    } else if (!authLoading && !user) {
-      setDataLoading(false);
+    } else if (!authLoading) {
       setPageLoading(false);
-      router.push('/login');
     }
-  }, [authLoading, user, userProfile, router, fetchPatientData]);
+  }, [authLoading, user, fetchPatientData, setPageLoading]);
 
   const upcomingAppointments = useMemo(() => 
     appointments
@@ -122,23 +114,9 @@ export default function PatientDetailPage() {
   };
 
 
-  if (authLoading || (dataLoading && !patient)) { 
+  if (authLoading || !patient) { 
     return null; 
   }
-
-  if (!patient && !dataLoading) { 
-    return (
-        <div className="space-y-6">
-            <Link href="/doctor/patients">
-                <Button variant="outline" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-            </Link>
-            <p className="text-center text-muted-foreground">Patient data not available or you do not have access.</p>
-        </div>
-    );
-  }
-  
-  if (!patient) return null;
-
 
   return (
     <div className="space-y-8">
@@ -306,4 +284,3 @@ function AppointmentsTable({ appointments, patientName, onDelete }: Appointments
     </div>
   );
 }
-    

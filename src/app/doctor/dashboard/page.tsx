@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Users, CalendarClock, Pill, Loader2 } from "lucide-react";
@@ -33,108 +33,100 @@ export default function DoctorDashboardPage() {
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [recentPatients, setRecentPatients] = useState<RecentPatientActivityItem[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  
+  const fetchDashboardData = useCallback(async () => {
+    if (!user || !db || userProfile?.role !== 'doctor') return;
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!user || !db || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false);
-        return;
-      }
-      setDataLoading(true);
-      setPageLoading(true); 
-      try {
-        // Fetch total patients
-        const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
-        const patientsSnapshot = await getDocs(patientsQuery);
-        const totalPatients = patientsSnapshot.size;
+    setPageLoading(true); 
+    try {
+      // Fetch total patients
+      const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+      const patientsSnapshot = await getDocs(patientsQuery);
+      const totalPatients = patientsSnapshot.size;
 
-        // Fetch upcoming appointments
-        const today = new Date();
-        const startOfToday = new Date(today.setHours(0, 0, 0, 0));
+      // Fetch upcoming appointments
+      const today = new Date();
+      const startOfToday = new Date(today.setHours(0, 0, 0, 0));
 
-        const upcomingAppointmentsQuery = query(
-          collection(db, APPOINTMENTS_COLLECTION),
-          where("doctorId", "==", user.uid),
-          where("status", "==", "scheduled"),
-          where("appointmentDate", ">=", Timestamp.fromDate(startOfToday))
-        );
-        const upcomingAppointmentsSnapshot = await getDocs(upcomingAppointmentsQuery);
-        const upcomingAppointmentsCount = upcomingAppointmentsSnapshot.size;
+      const upcomingAppointmentsQuery = query(
+        collection(db, APPOINTMENTS_COLLECTION),
+        where("doctorId", "==", user.uid),
+        where("status", "==", "scheduled"),
+        where("appointmentDate", ">=", Timestamp.fromDate(startOfToday))
+      );
+      const upcomingAppointmentsSnapshot = await getDocs(upcomingAppointmentsQuery);
+      const upcomingAppointmentsCount = upcomingAppointmentsSnapshot.size;
 
-        let appointmentsTodayCount = 0;
-        const endOfTodayForCompare = new Date(new Date().setHours(23, 59, 59, 999));
+      let appointmentsTodayCount = 0;
+      const endOfTodayForCompare = new Date(new Date().setHours(23, 59, 59, 999));
 
-        upcomingAppointmentsSnapshot.docs.forEach(doc => {
-          const aptDate = (doc.data().appointmentDate as Timestamp).toDate();
-          if (aptDate >= startOfToday && aptDate <= endOfTodayForCompare) {
-            appointmentsTodayCount++;
-          }
-        });
-
-        // Fetch medicines count
-        const medicinesQuery = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
-        const medicinesSnapshot = await getDocs(medicinesQuery);
-        const totalMedicines = medicinesSnapshot.size;
-
-        setDashboardStats({
-          totalPatients,
-          upcomingAppointments: upcomingAppointmentsCount,
-          appointmentsToday: appointmentsTodayCount,
-          totalMedicines,
-        });
-
-        // Fetch recent patients
-        const recentPatientsQuery = query(
-          collection(db, PATIENTS_COLLECTION),
-          where("doctorId", "==", user.uid),
-          orderBy("createdAt", "desc"),
-          limit(3)
-        );
-        const recentPatientsSnapshot = await getDocs(recentPatientsQuery);
-        const fetchedRecentPatients = recentPatientsSnapshot.docs.map(docSnap => {
-          const patientData = docSnap.data();
-          const createdAtDate = patientData.createdAt?.toDate ? patientData.createdAt.toDate() : new Date();
-          return {
-            id: docSnap.id,
-            name: patientData.name,
-            activity: `Registered on ${format(createdAtDate, "PP")}`,
-            img: `https://placehold.co/40x40.png?text=${patientData.name.charAt(0)}`,
-            createdAt: createdAtDate
-          };
-        }) as RecentPatientActivityItem[];
-        setRecentPatients(fetchedRecentPatients);
-
-      } catch (err: any) {
-        console.error("Error fetching dashboard data:", err);
-        if (err.code === 'failed-precondition' && err.message && err.message.toLowerCase().includes('query requires an index')) {
-          toast({
-            variant: "destructive",
-            title: "Database Index Required",
-            description: "A database index is needed for dashboard queries. Please check the Firebase console (or your browser's developer console for the error message, it often includes a direct link) to create the required index. Dashboard data may be incomplete or unavailable until the index is built.",
-            duration: 20000 
-          });
-        } else {
-          toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
+      upcomingAppointmentsSnapshot.docs.forEach(doc => {
+        const aptDate = (doc.data().appointmentDate as Timestamp).toDate();
+        if (aptDate >= startOfToday && aptDate <= endOfTodayForCompare) {
+          appointmentsTodayCount++;
         }
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
-      }
-    };
+      });
 
-    if (!authLoading && user && userProfile?.role === 'doctor') {
-      fetchDashboardData();
-    } else if (!authLoading && (!user || userProfile?.role !== 'doctor')) {
-      setDataLoading(false);
+      // Fetch medicines count
+      const medicinesQuery = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
+      const medicinesSnapshot = await getDocs(medicinesQuery);
+      const totalMedicines = medicinesSnapshot.size;
+
+      setDashboardStats({
+        totalPatients,
+        upcomingAppointments: upcomingAppointmentsCount,
+        appointmentsToday: appointmentsTodayCount,
+        totalMedicines,
+      });
+
+      // Fetch recent patients
+      const recentPatientsQuery = query(
+        collection(db, PATIENTS_COLLECTION),
+        where("doctorId", "==", user.uid),
+        orderBy("createdAt", "desc"),
+        limit(3)
+      );
+      const recentPatientsSnapshot = await getDocs(recentPatientsQuery);
+      const fetchedRecentPatients = recentPatientsSnapshot.docs.map(docSnap => {
+        const patientData = docSnap.data();
+        const createdAtDate = patientData.createdAt?.toDate ? patientData.createdAt.toDate() : new Date();
+        return {
+          id: docSnap.id,
+          name: patientData.name,
+          activity: `Registered on ${format(createdAtDate, "PP")}`,
+          img: `https://placehold.co/40x40.png?text=${patientData.name.charAt(0)}`,
+          createdAt: createdAtDate
+        };
+      }) as RecentPatientActivityItem[];
+      setRecentPatients(fetchedRecentPatients);
+
+    } catch (err: any) {
+      console.error("Error fetching dashboard data:", err);
+      if (err.code === 'failed-precondition' && err.message?.toLowerCase().includes('query requires an index')) {
+        toast({
+          variant: "destructive",
+          title: "Database Index Required",
+          description: "A database index is needed for dashboard queries. Please check the Firebase console to create the required index.",
+          duration: 20000 
+        });
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
+      }
+    } finally {
       setPageLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, authLoading, toast]); 
+  }, [user, userProfile, setPageLoading, toast]);
+  
+  useEffect(() => {
+    if (!authLoading && user) {
+      fetchDashboardData();
+    } else if (!authLoading) {
+      setPageLoading(false);
+    }
+  }, [authLoading, user, fetchDashboardData, setPageLoading]);
 
   const statsToDisplay = useMemo(() => {
-    if (dataLoading || !dashboardStats) {
+    if (!dashboardStats) {
       return [
         { title: "Total Patients", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Users className="h-6 w-6 text-primary" /> },
         { title: "Upcoming Appointments", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <CalendarClock className="h-6 w-6 text-accent" />, trend: "" },
@@ -146,7 +138,7 @@ export default function DoctorDashboardPage() {
       { title: "Upcoming Appointments", value: dashboardStats.upcomingAppointments.toString(), icon: <CalendarClock className="h-6 w-6 text-accent" />, trend: `${dashboardStats.appointmentsToday} today` },
       { title: "Medicines in DB", value: dashboardStats.totalMedicines.toString(), icon: <Pill className="h-6 w-6 text-destructive" /> },
     ];
-  }, [dashboardStats, dataLoading]);
+  }, [dashboardStats]);
 
 
   const quickActions = [
@@ -154,15 +146,10 @@ export default function DoctorDashboardPage() {
     { label: "Schedule Appointment", href: "/doctor/appointments/new", icon: <CalendarClock /> },
     { label: "Manage Medicines", href: "/doctor/medicines", icon: <Pill /> },
   ];
-
-  // The main DashboardShell handles the top-level authLoading.
-  // This page's specific loading (dataLoading) can be used for finer-grained UI if needed.
-  // If authLoading is true, DashboardShell shows a full page loader.
-  // If setPageLoading(true) was called, DashboardShell also shows a loader.
+  
   if (authLoading) {
-     return null; // DashboardShell handles the primary loader
+     return null;
   }
-
 
   return (
     <div className="space-y-8">
@@ -219,7 +206,7 @@ export default function DoctorDashboardPage() {
             <CardDescription>Overview of recent patient registrations.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {dataLoading && !recentPatients.length && dashboardStats === null ? (
+            {!dashboardStats && !recentPatients.length ? (
                 <div className="flex justify-center items-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
             ) : recentPatients.length > 0 ? (
               recentPatients.map(item => (
@@ -243,4 +230,3 @@ export default function DoctorDashboardPage() {
     </div>
   );
 }
-

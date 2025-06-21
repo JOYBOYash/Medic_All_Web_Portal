@@ -15,15 +15,12 @@ export default function DoctorSettingsPage() {
   const [darkMode, setDarkMode] = React.useState(false); 
 
   useEffect(() => {
-    // This page is ready as soon as auth context is loaded.
-    // DashboardShell turns the loader on, this page turns it off.
+    // This page has no data fetching, so it's ready as soon as auth is.
     if (!authLoading) {
       setPageLoading(false);
     }
   }, [authLoading, setPageLoading]);
 
-  // Let DashboardShell handle the main loading UI.
-  // This component will not render its own content until auth is resolved.
   if (authLoading) { 
     return null; 
   }
@@ -110,4 +107,3 @@ export default function DoctorSettingsPage() {
     </div>
   );
 }
-    

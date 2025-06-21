@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import type { Medicine } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { MoreHorizontal, PlusCircle, Pill, Edit, Trash2, Save, Search, Loader2 } from "lucide-react";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
@@ -33,7 +33,7 @@ export default function DoctorMedicinesPage() {
   const { toast } = useToast();
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [dataLoading, setDataLoading] = useState(true); // Local data loading
+  const [dataLoading, setDataLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -48,37 +48,31 @@ export default function DoctorMedicinesPage() {
     },
   });
 
-  useEffect(() => {
-    const fetchMedicines = async () => {
-      if (!user || !db || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false); 
-        return;
-      }
-      setDataLoading(true);
-      setPageLoading(true);
-      try {
-        const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
-        const querySnapshot = await getDocs(q);
-        const fetchedMedicines = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
-        setMedicines(fetchedMedicines);
-      } catch (error) {
-        console.error("Error fetching medicines: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Could not load medicines." });
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
-      }
-    };
-
-    if (!authLoading && user && userProfile?.role === 'doctor') {
-      fetchMedicines();
-    } else if (!authLoading && !user) {
-      setDataLoading(false); 
+  const fetchMedicines = useCallback(async () => {
+    if (!user || !db || userProfile?.role !== 'doctor') return;
+    setDataLoading(true);
+    setPageLoading(true);
+    try {
+      const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
+      const querySnapshot = await getDocs(q);
+      const fetchedMedicines = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
+      setMedicines(fetchedMedicines);
+    } catch (error) {
+      console.error("Error fetching medicines: ", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not load medicines." });
+    } finally {
+      setDataLoading(false);
       setPageLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, authLoading, toast]);
+  }, [user, userProfile, setPageLoading, toast]);
+  
+  useEffect(() => {
+    if (!authLoading && user) {
+      fetchMedicines();
+    } else if (!authLoading) {
+      setPageLoading(false);
+    }
+  }, [user, authLoading, fetchMedicines, setPageLoading]);
   
   useEffect(() => {
     if (editingMedicine) {
@@ -95,11 +89,10 @@ export default function DoctorMedicinesPage() {
 
   const onSubmit = async (data: MedicineFormValues) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
-        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
     setIsSubmittingForm(true);
-    // setPageLoading(true); // Consider if this is needed for dialog submission
     try {
         if (editingMedicine && editingMedicine.id) {
             const medDocRef = doc(db, MEDICINES_COLLECTION, editingMedicine.id);
@@ -128,7 +121,6 @@ export default function DoctorMedicinesPage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to save medicine." });
     } finally {
       setIsSubmittingForm(false);
-      // setPageLoading(false); // Balance this with overall page feel
     }
   };
 
@@ -139,11 +131,10 @@ export default function DoctorMedicinesPage() {
 
   const handleDelete = async (medicineId: string) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
-        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
     if (confirm("Are you sure you want to delete this medicine?")) {
-      // setPageLoading(true); // Consider for delete operations
       try {
         await deleteDoc(doc(db, MEDICINES_COLLECTION, medicineId));
         setMedicines(prev => prev.filter(m => m.id !== medicineId));
@@ -151,8 +142,7 @@ export default function DoctorMedicinesPage() {
       } catch (error) {
         console.error("Error deleting medicine: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to delete medicine." });
-      } 
-      // finally { setPageLoading(false); }
+      }
     }
   };
   
@@ -170,7 +160,7 @@ export default function DoctorMedicinesPage() {
   }, [medicines, searchTerm]);
 
   if (authLoading) {
-    return null; // DashboardShell handles the primary loader
+    return null;
   }
 
   return (
@@ -316,4 +306,3 @@ export default function DoctorMedicinesPage() {
     </div>
   );
 }
-

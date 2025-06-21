@@ -56,16 +56,14 @@ export default function DoctorProfilePage() {
   });
 
   useEffect(() => {
-    // This page is ready as soon as the auth state is resolved.
-    // DashboardShell turns the loader ON, this page turns it OFF.
     if (!authLoading) {
       if (userProfile) {
         profileForm.reset({
           displayName: userProfile.displayName || "",
           email: userProfile.email || "",
         });
+        clinicForm.reset(mockClinic);
       }
-      clinicForm.reset(mockClinic);
       setPageLoading(false);
     }
   }, [authLoading, userProfile, setPageLoading, profileForm, clinicForm]);
@@ -81,9 +79,6 @@ export default function DoctorProfilePage() {
     alert("Clinic details updated successfully (Medicall placeholder)!");
   };
 
-  // The DashboardShell handles the main loading state (both the full-page initial load,
-  // and the isPageLoading overlay). So, if authLoading is true, DashboardShell shows a loader
-  // and this component doesn't need to render its own content.
   if (authLoading || !userProfile) { 
     return null; 
   }
@@ -210,4 +205,3 @@ export default function DoctorProfilePage() {
     </div>
   );
 }
-    

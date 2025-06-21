@@ -21,16 +21,12 @@ export default function DoctorPatientsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
   const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
 
   const fetchPatients = useCallback(async () => {
-    if (!user || !userProfile || userProfile.role !== 'doctor') {
-      setDataLoading(false);
-      return;
-    }
-    // This function can be called from multiple places, so we start its local loader.
-    setDataLoading(true);
+    if (!user || !userProfile || userProfile.role !== 'doctor') return;
+    
+    setPageLoading(true);
     try {
       const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
       const querySnapshot = await getDocs(q);
@@ -45,22 +41,17 @@ export default function DoctorPatientsPage() {
       console.error("Error fetching patients: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
     } finally {
-      setDataLoading(false);
+      setPageLoading(false);
     }
-  }, [user, userProfile, toast]);
+  }, [user, userProfile, toast, setPageLoading]);
   
   useEffect(() => {
-    // This effect is responsible for the initial page load.
-    if (!authLoading) {
-      if (user && userProfile?.role === 'doctor') {
-        setPageLoading(true);
-        fetchPatients().finally(() => setPageLoading(false));
-      } else {
-        // If not a doctor or not logged in, ensure loader is off.
-        setPageLoading(false);
-      }
+    if (!authLoading && user) {
+      fetchPatients();
+    } else if (!authLoading) {
+      setPageLoading(false);
     }
-  }, [authLoading, user, userProfile, fetchPatients, setPageLoading]);
+  }, [authLoading, user, fetchPatients, setPageLoading]);
 
 
   const filteredPatients = useMemo(() => {
@@ -75,27 +66,19 @@ export default function DoctorPatientsPage() {
 
   const handleRemovePatient = async (patientId: string, patientName: string) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
-        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
+        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
-    if (window.confirm(`Are you sure you want to remove "${patientName}" from your active patient list? This will archive their record, but not permanently delete it.`)) {
+    if (window.confirm(`Are you sure you want to remove "${patientName}" from your active patient list? This will archive their record.`)) {
       setDeletingPatientId(patientId);
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        
-        await updateDoc(patientDocRef, {
-            status: 'archived'
-        });
-        
-        toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
-        
-        // Instead of trying to manipulate local state, just remove the item directly for an immediate UI update.
-        // The underlying data is now archived in the DB.
+        await updateDoc(patientDocRef, { status: 'archived' });
+        toast({ title: "Success", description: `Patient "${patientName}" has been archived.` });
         setPatients(prev => prev.filter(p => p.id !== patientId));
-
       } catch (error) {
         console.error("Error removing patient: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to remove patient. Please try again." });
+        toast({ variant: "destructive", title: "Error", description: "Failed to remove patient." });
       } finally {
         setDeletingPatientId(null);
       }
@@ -138,9 +121,7 @@ export default function DoctorPatientsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {dataLoading ? (
-            <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
-          ) : filteredPatients.length > 0 ? (
+          {patients.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -237,12 +218,12 @@ export default function DoctorPatientsPage() {
             <div className="text-center py-10 text-muted-foreground">
               <User className="mx-auto h-12 w-12 mb-4" />
               <p className="font-semibold">
-                {patients.length === 0 && !searchTerm ? "You haven't added any patients yet." : "No patients found."}
+                {searchTerm ? "No patients found." : "You haven't added any patients yet."}
               </p>
               <p>
-                {patients.length === 0 && !searchTerm 
-                  ? "Click 'Add New Patient' to get started." 
-                  : "Try adjusting your search or add a new patient."
+                {searchTerm 
+                  ? "Try adjusting your search terms." 
+                  : "Click 'Add New Patient' to get started."
                 }
               </p>
             </div>
