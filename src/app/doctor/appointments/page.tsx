@@ -84,7 +84,7 @@ export default function DoctorAppointmentsPage() {
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
+      // setPageLoading(true); // Let DashboardShell handle initial page load true
       try {
         const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
         const patientsSnapshot = await getDocs(patientsQuery);
@@ -110,9 +110,18 @@ export default function DoctorAppointmentsPage() {
         });
         setAppointments(fetchedAppointments);
 
-      } catch (error) {
-        console.error("Error fetching appointments: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Could not load appointments." });
+      } catch (err: any) {
+        console.error("Error fetching appointments: ", err);
+        if (err.code === 'failed-precondition' && err.message && err.message.toLowerCase().includes('query requires an index')) {
+          toast({
+            variant: "destructive",
+            title: "Database Index Required",
+            description: "A database index is needed to load appointments. Please check the Firebase console to create the required index. The page may not load correctly until this is done.",
+            duration: 20000 
+          });
+        } else {
+          toast({ variant: "destructive", title: "Error", description: "Could not load appointments." });
+        }
       } finally {
         setDataLoading(false);
         setPageLoading(false);
