@@ -14,7 +14,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { UserCircle, Save, ShieldAlert, Contact, Loader2 } from "lucide-react";
 import Image from "next/image";
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import { useAuth } from "@/context/AuthContext";
 
 const patientProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short"),
@@ -43,47 +43,46 @@ const mockPatientUser: UserProfile & Partial<Patient> & { contactNumber?: string
 };
 
 export default function PatientProfilePage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [profileData, setProfileData] = useState(mockPatientUser); // Replace with real data later
-  const [dataLoading, setDataLoading] = useState(true); // Local state
+  const [dataLoading, setDataLoading] = useState(true);
 
   const form = useForm<PatientProfileFormValues>({
     resolver: zodResolver(patientProfileSchema),
-    defaultValues: { // Will be updated by useEffect once real data is fetched
-      displayName: profileData.displayName || userProfile?.displayName || "",
-      email: profileData.email || userProfile?.email || "",
-      age: profileData.age,
-      sex: profileData.sex,
-      symptomsSummary: profileData.symptomsSummary || "",
-      contactNumber: profileData.contactNumber || "",
-      address: profileData.address || "",
+    defaultValues: { 
+      displayName: "",
+      email: "",
     },
   });
   
   useEffect(() => {
-    setPageLoading(true);
-    setDataLoading(true);
-    // TODO: Fetch actual patient profile data and merge with userProfile from AuthContext
-    // For now, using mock or existing AuthContext data to prefill
-    if (userProfile) {
-      form.reset({
-        displayName: userProfile.displayName || profileData.displayName || "",
-        email: userProfile.email || profileData.email || "",
-        // For other fields, you'd fetch from a patient-specific document
-        age: profileData.age, // Example, fetch this
-        sex: profileData.sex, // Example, fetch this
-        symptomsSummary: profileData.symptomsSummary, // Example
-        contactNumber: profileData.contactNumber, // Example
-        address: profileData.address, // Example
-      });
+    if (authLoading) {
+        setDataLoading(true);
+        return;
     }
-    // Simulate fetch
-    setTimeout(() => {
+    
+    setDataLoading(true);
+    // Use data from auth context or mocks to prefill the form
+    if (userProfile) {
+        form.reset({
+            displayName: userProfile.displayName || profileData.displayName || "",
+            email: userProfile.email || profileData.email || "",
+            age: profileData.age,
+            sex: profileData.sex,
+            symptomsSummary: profileData.symptomsSummary,
+            contactNumber: profileData.contactNumber,
+            address: profileData.address,
+        });
+    }
+
+    const timer = setTimeout(() => {
         setDataLoading(false);
-        setPageLoading(false);
+        setPageLoading(false); // Turn off global loader
     }, 500);
+
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile, setPageLoading]); // form.reset is stable
+  }, [authLoading, userProfile, setPageLoading]);
 
   const onSubmit = (data: PatientProfileFormValues) => {
     console.log("Patient profile update:", data);
@@ -92,10 +91,7 @@ export default function PatientProfilePage() {
     alert("Profile updated successfully (placeholder)!");
   };
 
-  if (authLoading) {
-    return null; // DashboardShell handles the primary loader
-  }
-  if (dataLoading) {
+  if (authLoading || dataLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -180,7 +176,7 @@ export default function PatientProfilePage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Sex</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger><SelectValue placeholder="Select sex" /></SelectTrigger>
                         </FormControl>

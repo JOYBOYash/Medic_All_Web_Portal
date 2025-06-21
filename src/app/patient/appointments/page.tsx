@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { CalendarCheck, CalendarX, History, PlusCircle, Download, MessageCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import { useAuth } from "@/context/AuthContext";
 
 // Mock data - replace with API call
 const mockAppointments: Appointment[] = [
@@ -23,21 +23,27 @@ const mockAppointments: Appointment[] = [
 
 
 export default function PatientAppointmentsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments); 
-  const [dataLoading, setDataLoading] = useState(true); // Local state for this page's data
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate data fetching for now
-    // In a real app, you'd fetch appointments for the logged-in patient here
-    setPageLoading(true);
+    if (authLoading) {
+      setDataLoading(true);
+      return;
+    }
+
+    // Simulate data fetching for this page
     setDataLoading(true);
-    setTimeout(() => {
-      // setAppointments(fetchedAppointments); // From API
+    const timer = setTimeout(() => {
+      // In a real app, you'd fetch appointments here and then:
+      // setAppointments(fetchedAppointments);
       setDataLoading(false);
-      setPageLoading(false);
+      setPageLoading(false); // Turn off the global loader
     }, 500); // Simulate network delay
-  }, [setPageLoading]);
+
+    return () => clearTimeout(timer);
+  }, [authLoading, setPageLoading]);
 
 
   const upcomingAppointments = useMemo(() => 
@@ -88,10 +94,7 @@ export default function PatientAppointmentsPage() {
     </Card>
   );
 
-  if (authLoading) {
-    return null; // DashboardShell handles the primary loader
-  }
-  if (dataLoading) { // Show local loader if this page is still fetching its specific data
+  if (authLoading || dataLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

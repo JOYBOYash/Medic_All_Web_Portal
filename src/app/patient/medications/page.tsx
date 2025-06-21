@@ -10,7 +10,7 @@ import { PrescribedMedicine } from "@/types/homeoconnect";
 import { format } from "date-fns";
 import { Pill, Bell, Clock, ListChecks, Loader2 } from "lucide-react";
 import Image from "next/image";
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import { useAuth } from "@/context/AuthContext";
 
 // Mock data - replace with API call
 const mockPrescriptions: PrescribedMedicine[] = [
@@ -25,22 +25,28 @@ interface MedicationWithReminder extends PrescribedMedicine {
 }
 
 export default function PatientMedicationsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [medications, setMedications] = useState<MedicationWithReminder[]>(
     mockPrescriptions.map(p => ({ ...p, reminderEnabled: true }))
   );
-  const [dataLoading, setDataLoading] = useState(true); // Local state
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading) {
+      setDataLoading(true);
+      return;
+    }
+
     // Simulate data fetching
-    setPageLoading(true);
     setDataLoading(true);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       // setMedications(fetchedMeds); // From API
       setDataLoading(false);
       setPageLoading(false);
     }, 500); 
-  }, [setPageLoading]);
+
+    return () => clearTimeout(timer);
+  }, [authLoading, setPageLoading]);
 
   const toggleReminder = (medicineId: string) => {
     setMedications(prevMeds => 
@@ -104,10 +110,7 @@ export default function PatientMedicationsPage() {
     </Card>
   );
 
-  if (authLoading) {
-    return null; // DashboardShell handles the primary loader
-  }
-  if (dataLoading) {
+  if (authLoading || dataLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

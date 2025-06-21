@@ -2,14 +2,14 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle }_ from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageSquareHeart, Send, Paperclip, UserCircle, Loader2 } from "lucide-react";
 import Image from "next/image";
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import { useAuth } from "@/context/AuthContext";
 
 interface Message {
   id: string;
@@ -20,7 +20,7 @@ interface Message {
 }
 
 export default function PatientChatPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     { id: "1", text: "Hello! How can I help you today?", sender: "bot", timestamp: new Date(Date.now() - 60000 * 5), avatar: "https://placehold.co/40x40.png?text=B" },
     { id: "2", text: "I'm feeling a bit dizzy after taking the new medicine.", sender: "user", timestamp: new Date(Date.now() - 60000 * 3), avatar: "https://placehold.co/40x40.png?text=P" },
@@ -28,19 +28,24 @@ export default function PatientChatPage() {
   ]);
   const [inputText, setInputText] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const [dataLoading, setDataLoading] = useState(true); // Local state
+  const [dataLoading, setDataLoading] = useState(true);
 
 
   useEffect(() => {
-    // Simulate initial chat load or setup
-    setPageLoading(true);
+    if (authLoading) {
+      setDataLoading(true);
+      return;
+    }
+    
     setDataLoading(true);
     // In a real app, you might fetch recent messages or doctor availability here
-    setTimeout(() => {
+    const timer = setTimeout(() => {
         setDataLoading(false);
         setPageLoading(false);
     }, 300); // Short delay for mock setup
-  }, [setPageLoading]);
+
+    return () => clearTimeout(timer);
+  }, [authLoading, setPageLoading]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -74,10 +79,7 @@ export default function PatientChatPage() {
     }, 1500);
   };
 
-  if (authLoading) {
-    return null; // DashboardShell handles the primary loader
-  }
-   if (dataLoading) {
+  if (authLoading || dataLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

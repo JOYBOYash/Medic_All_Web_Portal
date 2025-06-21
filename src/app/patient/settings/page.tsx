@@ -5,32 +5,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, DownloadCloud, Loader2 } from "lucide-react"; // Added Loader2
-import React, { useEffect, useState } from "react"; // Added useEffect, useState
-import { useAuth } from "@/context/AuthContext"; // Import useAuth
+import { Bell, Palette, ShieldCheck, DownloadCloud, Loader2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 export default function PatientSettingsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
-  // Placeholder states for settings
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const [medicationReminders, setMedicationReminders] = React.useState(true);
   const [appointmentAlerts, setAppointmentAlerts] = React.useState(true);
   const [darkMode, setDarkMode] = React.useState(false);
-  const [dataLoading, setDataLoading] = useState(true); // Local state for this page
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    // This page doesn't fetch data currently
-    setPageLoading(true);
+    if (authLoading) {
+      setDataLoading(true);
+      return;
+    }
+    
     setDataLoading(true);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       setDataLoading(false);
       setPageLoading(false);
     }, 200);
-  }, [setPageLoading]);
 
-  if (authLoading) {
-    return null; // DashboardShell handles the primary loader
-  }
-   if (dataLoading) {
+    return () => clearTimeout(timer);
+  }, [authLoading, setPageLoading]);
+
+  if (authLoading || dataLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
