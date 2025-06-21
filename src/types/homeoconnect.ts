@@ -33,6 +33,7 @@ export interface Patient {
   email: string; // Email associated with this patient record by the doctor, used for linking
   complications: string; // Text area for main health issues
   authUid: string | null; // Firebase Auth UID of the linked patient user account
+  status?: 'active' | 'archived';
   createdAt: Timestamp; // Firestore Timestamp
   updatedAt: Timestamp; // Firestore Timestamp
 }

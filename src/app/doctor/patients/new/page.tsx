@@ -121,6 +121,7 @@ export default function NewPatientPage() {
         doctorId: user.uid, 
         authUid: foundPatientProfile?.id || null, // Use the found profile's UID
         email: data.email, 
+        status: 'active',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };

@@ -12,7 +12,7 @@ import Link from "next/link";
 import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, collection, query, where, getDocs, deleteDoc, doc, writeBatch } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -22,6 +22,7 @@ export default function DoctorPatientsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPatients = async () => {
@@ -61,45 +62,35 @@ export default function DoctorPatientsPage() {
   }, [user, userProfile, authLoading, toast]);
 
   const filteredPatients = useMemo(() => {
-    return patients.filter(patient =>
-      patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (patient.complications && patient.complications.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    return patients
+      .filter(patient => patient.status !== 'archived')
+      .filter(patient =>
+        patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (patient.complications && patient.complications.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase()))
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
-  const handleDeletePatient = async (patientId: string, patientName: string) => {
+  const handleRemovePatient = async (patientId: string, patientName: string) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
         return;
     }
-    if (confirm(`Are you sure you want to delete patient "${patientName}"? This will also delete all their associated appointments. This action cannot be undone.`)) {
+    if (window.confirm(`Are you sure you want to remove "${patientName}" from your clinic? Their medical records will be preserved for their own access.`)) {
+      setDeletingPatientId(patientId);
       try {
-        // Query for all appointments for this patient within this clinic
-        const appointmentsQuery = query(
-            collection(db, APPOINTMENTS_COLLECTION),
-            where("patientId", "==", patientId),
-            where("doctorId", "==", user.uid)
-        );
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-
-        // Create a batch write to delete the patient and all associated appointments
-        const batch = writeBatch(db);
-
-        appointmentsSnapshot.forEach((doc) => {
-            batch.delete(doc.ref);
+        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+        await updateDoc(patientDocRef, {
+            status: 'archived'
         });
 
-        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        batch.delete(patientDocRef);
-
-        await batch.commit();
-
         setPatients(prev => prev.filter(p => p.id !== patientId));
-        toast({ title: "Success", description: `Patient "${patientName}" and their appointments have been deleted.` });
+        toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
       } catch (error) {
-        console.error("Error deleting patient and appointments: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient. Please try again." });
+        console.error("Error removing patient: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to remove patient. Please try again." });
+      } finally {
+        setDeletingPatientId(null);
       }
     }
   };
@@ -216,11 +207,16 @@ export default function DoctorPatientsPage() {
                             </Link>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => handleDeletePatient(patient.id, patient.name)} 
+                              onClick={() => handleRemovePatient(patient.id, patient.name)} 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                              disabled={deletingPatientId === patient.id}
                             >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Patient
+                               {deletingPatientId === patient.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-2 h-4 w-4" />
+                              )}
+                              {deletingPatientId === patient.id ? 'Removing...' : 'Remove Patient'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -249,5 +245,3 @@ export default function DoctorPatientsPage() {
     </div>
   );
 }
-
-
