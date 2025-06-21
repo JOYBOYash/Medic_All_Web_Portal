@@ -12,7 +12,7 @@ import Link from "next/link";
 import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc, writeBatch } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -84,7 +84,9 @@ export default function DoctorPatientsPage() {
             status: 'archived'
         });
 
-        setPatients(prev => prev.filter(p => p.id !== patientId));
+        setPatients(prev => prev.map(p => 
+          p.id === patientId ? { ...p, status: 'archived' } : p
+        ));
         toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
       } catch (error) {
         console.error("Error removing patient: ", error);
