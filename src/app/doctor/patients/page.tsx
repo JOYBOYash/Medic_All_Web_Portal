@@ -80,13 +80,14 @@ export default function DoctorPatientsPage() {
       setDeletingPatientId(patientId);
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+        // Update the document in Firestore to 'archived'
         await updateDoc(patientDocRef, {
             status: 'archived'
         });
 
-        setPatients(prev => prev.map(p => 
-          p.id === patientId ? { ...p, status: 'archived' } : p
-        ));
+        // Directly filter the patient out of the local state for an immediate and guaranteed UI update.
+        setPatients(prev => prev.filter(p => p.id !== patientId));
+        
         toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
       } catch (error) {
         console.error("Error removing patient: ", error);
