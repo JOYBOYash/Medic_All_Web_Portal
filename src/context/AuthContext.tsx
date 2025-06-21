@@ -7,6 +7,7 @@ import { doc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, USERS_COLLECTION, getFirestoreDoc, setFirestoreDoc } from '@/lib/firebase'; // Adjusted imports
 import type { UserProfile } from '@/types/homeoconnect';
 import { useRouter, usePathname } from 'next/navigation';
+import { toast } from '@/hooks/use-toast';
 
 interface AuthContextType {
   user: User | null;
@@ -47,10 +48,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUserProfile(profileData);
           } else {
             console.warn("No user profile found in Firestore for UID:", firebaseUser.uid, "Logging out.");
+            toast({
+              variant: "destructive",
+              title: "Login Failed",
+              description: "User profile not found. Please contact support.",
+            });
             await signOut(auth);
           }
         } catch (error) {
           console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
+          toast({
+            variant: "destructive",
+            title: "Login Failed",
+            description: "An error occurred while fetching your profile.",
+          });
           await signOut(auth);
         } finally {
           setLoading(false);
@@ -62,6 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const logoutHandler = async () => {
@@ -83,13 +95,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
+    const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
     const isProtectedPath = pathname.startsWith('/doctor') || pathname.startsWith('/patient');
-    const isOnPublicRedirectPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
 
-    // If user is logged in (and we have their profile)
+    // If user IS logged in
     if (user && userProfile) {
-      // If they are on a public page like /login, redirect them to their dashboard.
-      if (isOnPublicRedirectPage) {
+      // And they are on an auth page, redirect them to their dashboard
+      if (isAuthPage) {
         setIsPageLoading(true); // Show loader for the redirect
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
@@ -101,25 +113,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                             (pathname.startsWith('/patient') && userProfile.role === 'patient');
 
       if (isProtectedPath && !isCorrectPath) {
-        setIsPageLoading(true);
-        logoutHandler(); // This will trigger a redirect to /login via onAuthStateChanged
+        // Role mismatch - log them out and redirect.
+        // Add a toast to inform the user why they are being logged out.
+        toast({
+          variant: "destructive",
+          title: "Access Denied",
+          description: "You are not authorized for that role's dashboard.",
+        });
+        logoutHandler(); // This will trigger redirect to login via onAuthStateChanged
         return;
       }
-    } 
+    }
     // If user is NOT logged in
     else {
-      // If they are trying to access a protected page, redirect to login.
+      // And they are on a protected page, redirect to login
       if (isProtectedPath) {
         setIsPageLoading(true);
         router.replace('/login');
         return;
       }
-
-      // On a public page and not logged in is the correct state. Turn off loader.
-      setIsPageLoading(false);
     }
+    
+    // If none of the above redirect conditions are met, the page can finish loading.
+    // This handles cases like being on a public page while logged out.
+    // Individual pages are responsible for setting this to false when their content loads.
+    // setIsPageLoading(false);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, loading, pathname]);
+  }, [user, userProfile, loading, pathname, router]);
 
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
@@ -156,6 +177,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: serverTimestamp(),
       };
       await setFirestoreDoc(userDocRef, newUserProfile); 
+      // Do not sign out here, let them log in.
       return { user: firebaseUser };
     } catch (error: any) {
       setIsPageLoading(false);
