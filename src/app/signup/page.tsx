@@ -68,14 +68,15 @@ export default function SignupPage() {
     if ('user' in result && result.user) {
       toast({
         title: "Signup Successful!",
-        description: "Account created. Please login to continue.",
+        description: "Redirecting to your dashboard...",
       });
-      // Redirect to login, passing email and role
-      router.push(`/login?role=${selectedRole}&email=${encodeURIComponent(data.email)}`);
+      // After successful signup, the user is already logged in.
+      // The AuthContext will now detect the new user and handle redirection to the dashboard.
+      // We no longer need to manually redirect to the login page.
 
     } else if (result.errorCode === 'auth/email-already-in-use') {
       toast({
-        variant: "default", // Use default/info toast
+        variant: "default",
         title: "Account Exists",
         description: "This email is already registered. Redirecting to login...",
       });

@@ -35,12 +35,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const fetchUserProfile = useCallback(async (firebaseUser: User) => {
+  const fetchUserProfile = useCallback(async (firebaseUser: User): Promise<UserProfile> => {
     const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
     const userDocSnap = await getFirestoreDoc(userDocRef);
     if (userDocSnap.exists()) {
         const profileData = userDocSnap.data() as UserProfile;
-        setUserProfile(profileData);
         return profileData;
     } else {
         throw new Error("User profile not found in Firestore.");
@@ -57,8 +56,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Logout error:", error);
-      setUser(null); setUserProfile(null); setLoading(false); setIsPageLoading(false);
-      if (!options?.suppressRedirect) {
+    } finally {
+      setUser(null);
+      setUserProfile(null);
+      setLoading(false);
+      setIsPageLoading(false);
+       if (!options?.suppressRedirect) {
         router.push('/login');
       }
     }
@@ -69,43 +72,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(true);
       if (firebaseUser) {
         try {
-          await fetchUserProfile(firebaseUser);
+          const profile = await fetchUserProfile(firebaseUser);
+          setUserProfile(profile);
           setUser(firebaseUser);
         } catch (error: any) {
-          // If profile not found, it might be a race condition on signup.
-          // Wait a moment and try one more time.
-          if (error.message.includes("not found")) {
-            console.warn("User profile not found. Retrying once after a short delay...");
-            await new Promise(res => setTimeout(res, 1500)); // Wait 1.5 seconds
+          // This catch block handles the case where fetching the profile fails.
+          // The most common reason is a race condition on new user signup.
+          const isNewUser = firebaseUser.metadata.creationTime === firebaseUser.metadata.lastSignInTime;
+
+          if (isNewUser && error.message.toLowerCase().includes("not found")) {
+            // New user, profile might not be ready. Retry once.
+            console.warn("New user profile not found, retrying...");
+            await new Promise(res => setTimeout(res, 2000)); // Wait for Firestore
             try {
-              await fetchUserProfile(firebaseUser);
+              const profile = await fetchUserProfile(firebaseUser);
+              setUserProfile(profile);
               setUser(firebaseUser);
-            } catch (finalError: any) {
-              // If it fails again, it's a genuine error.
-              console.error("Error fetching user profile on retry for UID:", firebaseUser.uid, finalError);
+            } catch (retryError: any) {
+              console.error("Error fetching user profile on retry for UID:", firebaseUser.uid, retryError);
               toast({
                 variant: "destructive",
                 title: "Login Failed",
-                description: "Your user profile could not be found. Please contact support.",
+                description: "Your user profile could not be found after signup. Please try logging in.",
               });
               await logoutHandler({ suppressRedirect: true });
             }
           } else {
-            // It's a different error, not a "not found" one.
-            console.error("An unexpected error occurred fetching user profile for UID:", firebaseUser.uid, error);
+            // This is an existing user with a missing profile, or a different kind of error.
+            console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
             toast({
               variant: "destructive",
               title: "Login Failed",
-              description: "An unexpected error occurred while fetching your profile.",
+              description: "Your user profile could not be loaded. Please contact support.",
             });
             await logoutHandler({ suppressRedirect: true });
           }
+        } finally {
+           setLoading(false);
         }
       } else {
         setUser(null);
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, [fetchUserProfile, logoutHandler]);
@@ -158,11 +167,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle the rest.
-      // Loading state is now managed inside the onAuthStateChanged effect.
       return { user: userCredential.user };
     } catch (error: any) {
-      setIsPageLoading(false); // Make sure loader is off on failure
       let errorMessage = "Failed to login. Please check your credentials.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
