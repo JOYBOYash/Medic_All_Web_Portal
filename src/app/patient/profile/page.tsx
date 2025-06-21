@@ -15,7 +15,7 @@ import * as z from "zod";
 import { UserCircle, Save, ShieldAlert, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, doc, updateDoc, serverTimestamp, getFirestoreDoc, query, collection, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { db, doc, updateDoc, serverTimestamp, getFirestoreDoc, query, collection, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION, limit } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 
 const patientProfileSchema = z.object({
