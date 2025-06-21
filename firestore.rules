@@ -4,58 +4,63 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Users can only read/update their own profile.
+    // Users collection
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId;
-      allow delete: if false;
+      // Anyone can read a user's public profile info (e.g. doctor's name for appointments)
+      allow read: if true;
+      // Only the authenticated user can create or update their own profile
+      allow create, update: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Medicines can be read by any authenticated user, but only managed by the doctor who created them.
-    match /medicines/{medicineId} {
-      allow read: if request.auth != null;
-      allow create, update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
-                          && request.resource.data.doctorId == request.auth.uid;
-      allow delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
-                     && resource.data.doctorId == request.auth.uid;
-    }
-
-    // Doctors manage patient records; Patients can read their own records.
+    // Patients collection
     match /patients/{patientId} {
-      function isDoctorOfPatient() {
-        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
-               && resource.data.doctorId == request.auth.uid;
-      }
-      
-      function isPatientSelf() {
-        return resource.data.authUid == request.auth.uid;
-      }
+      // CREATE: A doctor can create a patient record for their clinic.
+      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && request.auth.uid == request.resource.data.doctorId;
 
-      allow read: if isDoctorOfPatient() || isPatientSelf();
-      
-      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
-                                     && request.auth.uid == request.resource.data.doctorId;
+      // READ: 
+      // 1. A doctor can read a patient record if it belongs to their clinic.
+      // 2. A patient can read their own records if their authUid matches.
+      allow read: if request.auth != null && 
+                   (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid) ||
+                   (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'patient' && resource.data.authUid == request.auth.uid);
+
+      // UPDATE: A doctor can update a patient record for their clinic.
+      allow update: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
+
+      // DELETE: A doctor can delete a patient record from their clinic.
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
     }
 
-    // Doctors manage appointments; Patients can read their own.
+    // Medicines collection
+    match /medicines/{medicineId} {
+      // Only doctors can manage medicines associated with their ID
+      allow read, create, update, delete: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' &&
+        (request.resource.data.doctorId == request.auth.uid || resource.data.doctorId == request.auth.uid);
+    }
+    
+    // Appointments
     match /appointments/{appointmentId} {
-      function isDoctorOfAppointment() {
-        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
-               && resource.data.doctorId == request.auth.uid;
-      }
+      // CREATE: Doctor can create appointment for their patient
+      allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && request.resource.data.doctorId == request.auth.uid;
+      
+      // READ: 
+      // 1. Doctor can read their appointments
+      // 2. Patient can read their appointments if their authUid is on the linked patient record.
+      allow read: if request.auth != null && (
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid) ||
+          (
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'patient' &&
+              exists(/databases/$(database)/documents/patients/$(resource.data.patientId)) &&
+              get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.authUid == request.auth.uid
+          )
+      );
 
-      function isPatientOfAppointment() {
-        // A patient can see an appointment if the appointment's patientId links to a patient record
-        // that has the patient's authUid. This is the secure way to check.
-        let patientRecord = get(/databases/$(database)/documents/patients/$(resource.data.patientId));
-        return patientRecord.data.authUid == request.auth.uid;
-      }
+      // UPDATE: Doctor can update their appointments
+      allow update: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
 
-      allow read: if isDoctorOfAppointment() || isPatientOfAppointment();
-
-      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
-                                     && request.auth.uid == request.resource.data.doctorId;
+      // DELETE: Doctor can delete their appointments.
+      allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
     }
   }
 }

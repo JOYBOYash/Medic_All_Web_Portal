@@ -12,7 +12,7 @@ import Link from "next/link";
 import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, deleteDoc, doc } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, collection, query, where, getDocs, deleteDoc, doc, writeBatch } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -73,14 +73,33 @@ export default function DoctorPatientsPage() {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
         return;
     }
-    if (confirm(`Are you sure you want to delete patient "${patientName}"? This action cannot be undone.`)) {
+    if (confirm(`Are you sure you want to delete patient "${patientName}"? This will also delete all their associated appointments. This action cannot be undone.`)) {
       try {
-        await deleteDoc(doc(db, PATIENTS_COLLECTION, patientId));
+        // Query for all appointments for this patient within this clinic
+        const appointmentsQuery = query(
+            collection(db, APPOINTMENTS_COLLECTION),
+            where("patientId", "==", patientId),
+            where("doctorId", "==", user.uid)
+        );
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+
+        // Create a batch write to delete the patient and all associated appointments
+        const batch = writeBatch(db);
+
+        appointmentsSnapshot.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+        batch.delete(patientDocRef);
+
+        await batch.commit();
+
         setPatients(prev => prev.filter(p => p.id !== patientId));
-        toast({ title: "Success", description: `Patient "${patientName}" deleted.` });
+        toast({ title: "Success", description: `Patient "${patientName}" and their appointments have been deleted.` });
       } catch (error) {
-        console.error("Error deleting patient: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
+        console.error("Error deleting patient and appointments: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient. Please try again." });
       }
     }
   };
@@ -230,4 +249,5 @@ export default function DoctorPatientsPage() {
     </div>
   );
 }
+
 
