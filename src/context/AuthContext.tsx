@@ -72,6 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
+      setIsPageLoading(true); // Turn on loader during auth state change
       if (firebaseUser) {
         try {
           await fetchUserProfile(firebaseUser);
@@ -91,13 +92,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUserProfile(null);
       }
       setLoading(false);
+      // The loader is NOT turned off here. It's turned off by the page component.
     });
     return () => unsubscribe();
   }, [fetchUserProfile, logoutHandler]);
 
   useEffect(() => {
+    // This effect handles route protection AFTER the auth state is resolved.
     if (loading) {
-      setIsPageLoading(true);
+      // If auth is still loading, we do nothing and wait.
+      // The loader is already on from the onAuthStateChanged effect.
       return;
     }
 
@@ -105,10 +109,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const isProtectedPath = pathname.startsWith('/doctor') || pathname.startsWith('/patient');
 
     if (user && userProfile) {
+      // User is logged in
       if (isAuthPage) {
         setIsPageLoading(true);
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
+        // The destination page will be responsible for turning off the loader.
         return;
       }
 
@@ -116,6 +122,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                             (pathname.startsWith('/patient') && userProfile.role === 'patient');
 
       if (isProtectedPath && !isCorrectPath) {
+        // Logged in, but wrong role.
         toast({
           variant: "destructive",
           title: "Access Denied",
@@ -125,15 +132,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
     } else {
+      // User is not logged in
       if (isProtectedPath) {
         setIsPageLoading(true);
         router.replace('/login');
+        // The login page will be responsible for turning off the loader.
         return;
       }
     }
     
-    // If no redirect has occurred, we can safely turn off the page loader.
-    setIsPageLoading(false);
+    // If we reach here, it means no redirect is necessary for the current page.
+    // We can let the page component itself manage the loader state.
+    // We do NOT turn the loader off here.
 
   }, [user, userProfile, loading, pathname, router, logoutHandler]);
 
