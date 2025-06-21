@@ -73,12 +73,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await fetchUserProfile(firebaseUser);
           setUser(firebaseUser);
         } catch (error: any) {
+          // This check is to handle a race condition during signup.
+          // Sometimes, onAuthStateChanged fires before the user profile document is created in Firestore.
           const creationTime = new Date(firebaseUser.metadata.creationTime || 0).getTime();
           const now = new Date().getTime();
           // Check if the user was created in the last 10 seconds.
           const isNewUser = (now - creationTime) < 10000;
-
-          if (error.message?.includes("User profile not found in Firestore") && isNewUser) {
+          
+          if (isNewUser && error.message.includes("User profile not found")) {
             // This is an expected race condition during signup. The user document is still being created.
             // We can safely ignore this error, as the user will be redirected to the login page
             // by the signup flow, and by then, the document will exist.
@@ -89,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             toast({
               variant: "destructive",
               title: "Login Failed",
-              description: error.message?.includes("User profile not found in Firestore")
+              description: error.message.includes("User profile not found")
                 ? "Your user profile could not be found. Please contact support."
                 : "An error occurred while fetching your profile.",
             });
@@ -119,7 +121,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (user && userProfile) {
       // User is logged in
       if (isAuthPage) {
-        setIsPageLoading(true);
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
         return;
