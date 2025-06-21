@@ -81,18 +81,13 @@ export default function DoctorPatientsPage() {
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         
-        // Update the document in Firestore to 'archived'
+        // Step 1: Update the document in Firestore to 'archived'
         await updateDoc(patientDocRef, {
             status: 'archived'
         });
 
-        // Update the local state to match the change.
-        // This will cause the useMemo for filteredPatients to re-run and hide the patient.
-        setPatients(prevPatients =>
-            prevPatients.map(p =>
-                p.id === patientId ? { ...p, status: 'archived' } : p
-            )
-        );
+        // Step 2: Directly remove the patient from the local state list for an immediate UI update.
+        setPatients(prevPatients => prevPatients.filter(p => p.id !== patientId));
         
         toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
       } catch (error) {
