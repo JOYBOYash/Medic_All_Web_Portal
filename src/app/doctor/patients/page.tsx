@@ -76,17 +76,23 @@ export default function DoctorPatientsPage() {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized to perform this action." });
         return;
     }
-    if (window.confirm(`Are you sure you want to remove "${patientName}" from your clinic? Their medical records will be preserved for their own access.`)) {
+    if (window.confirm(`Are you sure you want to remove "${patientName}" from your active patient list? This will archive their record, but not permanently delete it.`)) {
       setDeletingPatientId(patientId);
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+        
         // Update the document in Firestore to 'archived'
         await updateDoc(patientDocRef, {
             status: 'archived'
         });
 
-        // Directly filter the patient out of the local state for an immediate and guaranteed UI update.
-        setPatients(prev => prev.filter(p => p.id !== patientId));
+        // Update the local state to match the change.
+        // This will cause the useMemo for filteredPatients to re-run and hide the patient.
+        setPatients(prevPatients =>
+            prevPatients.map(p =>
+                p.id === patientId ? { ...p, status: 'archived' } : p
+            )
+        );
         
         toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
       } catch (error) {
