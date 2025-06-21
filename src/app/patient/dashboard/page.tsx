@@ -1,7 +1,7 @@
 
 "use client"; // Ensure this is a client component
 
-import React, { useEffect } from "react"; 
+import React, { useEffect, useState } from "react"; 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Pill, MessageSquareHeart, FileText, User, Loader2 } from "lucide-react"; 
@@ -10,7 +10,8 @@ import Image from "next/image";
 import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
 export default function PatientDashboardPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth(); // Get setPageLoading
+  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const [dataLoading, setDataLoading] = useState(true);
 
   // Mock data - replace with actual data fetching later
   const upcomingAppointment = {
@@ -33,13 +34,33 @@ export default function PatientDashboardPage() {
   ];
 
   useEffect(() => {
-    // This page currently uses mock data, so we can set loading to false quickly.
-    // If/when it fetches real data, this logic will be more complex.
-    setPageLoading(false); 
-  }, [setPageLoading]);
+    // This effect manages loading state for this specific page.
+    // It waits for the main AuthContext to finish its loading.
+    if (authLoading) {
+      setDataLoading(true); // Keep this page's content loader active
+      return; // Wait until auth is resolved
+    }
+
+    // Auth is resolved, now we can 'load' this page's content.
+    setDataLoading(true); // Start local loading for mock data
+    setTimeout(() => {
+      setDataLoading(false); // Finish local loading
+      setPageLoading(false); // Turn off the global loader overlay
+    }, 200); // A small delay to simulate content loading
+
+  }, [authLoading, setPageLoading]);
 
   if (authLoading) {
-    return null; // DashboardShell handles the primary loader
+    return null; // DashboardShell handles the primary loader while auth is resolving.
+  }
+  
+  if (dataLoading) {
+    // This is the local loader for the page content area
+    return (
+       <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
