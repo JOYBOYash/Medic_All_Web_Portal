@@ -67,33 +67,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
-      setIsPageLoading(true); // Turn on loader during auth state change
       if (firebaseUser) {
         try {
           await fetchUserProfile(firebaseUser);
           setUser(firebaseUser);
         } catch (error: any) {
-          // This check is to handle a race condition during signup.
-          // Sometimes, onAuthStateChanged fires before the user profile document is created in Firestore.
-          const creationTime = new Date(firebaseUser.metadata.creationTime || 0).getTime();
-          const now = new Date().getTime();
-          // Check if the user was created in the last 10 seconds.
-          const isNewUser = (now - creationTime) < 10000;
-          
-          if (isNewUser && error.message.includes("User profile not found")) {
-            // This is an expected race condition during signup. The user document is still being created.
-            // We can safely ignore this error, as the user will be redirected to the login page
-            // by the signup flow, and by then, the document will exist.
-            console.warn("User profile not found immediately after signup. This is expected and will be resolved upon login.");
+          // If profile not found, it might be a race condition on signup.
+          // Wait a moment and try one more time.
+          if (error.message.includes("not found")) {
+            console.warn("User profile not found. Retrying once after a short delay...");
+            await new Promise(res => setTimeout(res, 1500)); // Wait 1.5 seconds
+            try {
+              await fetchUserProfile(firebaseUser);
+              setUser(firebaseUser);
+            } catch (finalError: any) {
+              // If it fails again, it's a genuine error.
+              console.error("Error fetching user profile on retry for UID:", firebaseUser.uid, finalError);
+              toast({
+                variant: "destructive",
+                title: "Login Failed",
+                description: "Your user profile could not be found. Please contact support.",
+              });
+              await logoutHandler({ suppressRedirect: true });
+            }
           } else {
-            // This is a genuine error for an existing user whose profile is missing.
-            console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
+            // It's a different error, not a "not found" one.
+            console.error("An unexpected error occurred fetching user profile for UID:", firebaseUser.uid, error);
             toast({
               variant: "destructive",
               title: "Login Failed",
-              description: error.message.includes("User profile not found")
-                ? "Your user profile could not be found. Please contact support."
-                : "An error occurred while fetching your profile.",
+              description: "An unexpected error occurred while fetching your profile.",
             });
             await logoutHandler({ suppressRedirect: true });
           }
@@ -103,7 +106,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUserProfile(null);
       }
       setLoading(false);
-      // The loader is NOT turned off here. It's turned off by the page component or the second useEffect.
     });
     return () => unsubscribe();
   }, [fetchUserProfile, logoutHandler]);
@@ -142,7 +144,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } else {
       // User is not logged in
       if (isProtectedPath) {
-        setIsPageLoading(true);
         router.replace('/login');
         return;
       }
@@ -155,13 +156,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user, userProfile, loading, pathname, router, logoutHandler]);
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
-    setIsPageLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle the rest
+      // onAuthStateChanged will handle the rest.
+      // Loading state is now managed inside the onAuthStateChanged effect.
       return { user: userCredential.user };
     } catch (error: any) {
-      setIsPageLoading(false);
+      setIsPageLoading(false); // Make sure loader is off on failure
       let errorMessage = "Failed to login. Please check your credentials.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
@@ -171,7 +172,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<UserCredentialWrapper | { error: string, errorCode?: string }> => {
-    setIsPageLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
@@ -193,7 +193,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       return { user: firebaseUser };
     } catch (error: any) {
-      setIsPageLoading(false);
       let errorMessage = "Failed to signup. Please try again.";
       if (error.code === 'auth/email-already-in-use') errorMessage = "This email address is already in use.";
       else if (error.code === 'auth/weak-password') errorMessage = "Password is too weak.";
