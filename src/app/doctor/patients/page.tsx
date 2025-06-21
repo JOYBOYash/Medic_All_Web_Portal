@@ -9,10 +9,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import type { Patient } from "@/types/homeoconnect";
 import { MoreHorizontal, PlusCircle, Search, User, Edit, Trash2, FileText, Loader2, Link as LinkIcon, Link2Off } from "lucide-react";
 import Link from "next/link";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc, writeBatch } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -24,42 +24,38 @@ export default function DoctorPatientsPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchPatients = async () => {
-      if (!user || !db || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false);
-        return;
-      }
-      setDataLoading(true);
-      setPageLoading(true);
-      try {
-        const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
-        const querySnapshot = await getDocs(q);
-        const fetchedPatients = querySnapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
-          updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
-        } as Patient));
-        setPatients(fetchedPatients);
-      } catch (error) {
-        console.error("Error fetching patients: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
-      }
-    };
+  const fetchPatients = useCallback(async () => {
+    if (!user || !userProfile || userProfile.role !== 'doctor') {
+      setDataLoading(false);
+      return;
+    }
+    setDataLoading(true);
+    try {
+      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+      const querySnapshot = await getDocs(q);
+      const fetchedPatients = querySnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
+        updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
+      } as Patient));
+      setPatients(fetchedPatients);
+    } catch (error) {
+      console.error("Error fetching patients: ", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
+    } finally {
+      setDataLoading(false);
+    }
+  }, [user, userProfile, toast]);
 
+  useEffect(() => {
     if (!authLoading && user && userProfile?.role === 'doctor') {
-      fetchPatients();
-    } else if (!authLoading && !user) {
-      setDataLoading(false); 
+      setPageLoading(true);
+      fetchPatients().finally(() => setPageLoading(false));
+    } else if (!authLoading) {
       setPageLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, authLoading, toast]);
+  }, [authLoading, user, userProfile, fetchPatients, setPageLoading]);
 
   const filteredPatients = useMemo(() => {
     return patients
@@ -81,15 +77,15 @@ export default function DoctorPatientsPage() {
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         
-        // Step 1: Update the document in Firestore to 'archived'
         await updateDoc(patientDocRef, {
             status: 'archived'
         });
-
-        // Step 2: Directly remove the patient from the local state list for an immediate UI update.
-        setPatients(prevPatients => prevPatients.filter(p => p.id !== patientId));
         
         toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
+        
+        // Refetch the entire patient list to guarantee the UI updates correctly.
+        await fetchPatients();
+
       } catch (error) {
         console.error("Error removing patient: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to remove patient. Please try again." });
