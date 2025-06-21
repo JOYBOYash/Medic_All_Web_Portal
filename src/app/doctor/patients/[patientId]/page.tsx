@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -31,57 +31,57 @@ export default function PatientDetailPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
+  const fetchPatientData = useCallback(async () => {
+    if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
+      setDataLoading(false);
+      setPageLoading(false);
+      return;
+    }
+    setDataLoading(true);
+    setPageLoading(true);
+    try {
+      const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+      const patientDocSnap = await getFirestoreDoc(patientDocRef);
+
+      if (patientDocSnap.exists() && patientDocSnap.data().doctorId === user.uid) {
+        setPatient({ 
+          id: patientDocSnap.id, 
+          ...patientDocSnap.data(),
+          createdAt: patientDocSnap.data().createdAt?.toDate ? patientDocSnap.data().createdAt.toDate() : new Date(),
+          updatedAt: patientDocSnap.data().updatedAt?.toDate ? patientDocSnap.data().updatedAt.toDate() : new Date(),
+         } as Patient);
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Patient not found or access denied." });
+        router.push("/doctor/patients"); 
+        return; 
+      }
+
+      const appointmentsQuery = query(
+        collection(db, APPOINTMENTS_COLLECTION),
+        where("patientId", "==", patientId),
+        where("doctorId", "==", user.uid) 
+      );
+      const appointmentsSnapshot = await getDocs(appointmentsQuery);
+      const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+        appointmentDate: (docSnap.data().appointmentDate as Timestamp).toDate(),
+        createdAt: (docSnap.data().createdAt as Timestamp).toDate(),
+        updatedAt: (docSnap.data().updatedAt as Timestamp).toDate(),
+        nextAppointmentDate: docSnap.data().nextAppointmentDate ? (docSnap.data().nextAppointmentDate as Timestamp).toDate() : undefined,
+      } as Appointment));
+      setAppointments(fetchedAppointments);
+
+    } catch (error) {
+      console.error("Error fetching patient data: ", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not load patient data." });
+    } finally {
+      setDataLoading(false);
+      setPageLoading(false);
+    }
+  }, [patientId, user, userProfile, setPageLoading, toast, router]);
+
   useEffect(() => {
-    const fetchPatientData = async () => {
-      if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false);
-        return;
-      }
-      setDataLoading(true);
-      setPageLoading(true);
-      try {
-        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        const patientDocSnap = await getFirestoreDoc(patientDocRef);
-
-        if (patientDocSnap.exists() && patientDocSnap.data().doctorId === user.uid) {
-          setPatient({ 
-            id: patientDocSnap.id, 
-            ...patientDocSnap.data(),
-            createdAt: patientDocSnap.data().createdAt?.toDate ? patientDocSnap.data().createdAt.toDate() : new Date(),
-            updatedAt: patientDocSnap.data().updatedAt?.toDate ? patientDocSnap.data().updatedAt.toDate() : new Date(),
-           } as Patient);
-        } else {
-          toast({ variant: "destructive", title: "Error", description: "Patient not found or access denied." });
-          router.push("/doctor/patients"); 
-          return; 
-        }
-
-        const appointmentsQuery = query(
-          collection(db, APPOINTMENTS_COLLECTION),
-          where("patientId", "==", patientId),
-          where("doctorId", "==", user.uid) 
-        );
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-        const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => ({ // Corrected doc to docSnap
-          id: docSnap.id,
-          ...docSnap.data(),
-          appointmentDate: (docSnap.data().appointmentDate as Timestamp).toDate(),
-          createdAt: (docSnap.data().createdAt as Timestamp).toDate(),
-          updatedAt: (docSnap.data().updatedAt as Timestamp).toDate(),
-          nextAppointmentDate: docSnap.data().nextAppointmentDate ? (docSnap.data().nextAppointmentDate as Timestamp).toDate() : undefined,
-        } as Appointment));
-        setAppointments(fetchedAppointments);
-
-      } catch (error) {
-        console.error("Error fetching patient data: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Could not load patient data." });
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
-      }
-    };
-
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchPatientData();
     } else if (!authLoading && !user) {
@@ -89,8 +89,7 @@ export default function PatientDetailPage() {
       setPageLoading(false);
       router.push('/login');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, user, userProfile, authLoading, toast, router]);
+  }, [authLoading, user, userProfile, router, fetchPatientData]);
 
   const upcomingAppointments = useMemo(() => 
     appointments

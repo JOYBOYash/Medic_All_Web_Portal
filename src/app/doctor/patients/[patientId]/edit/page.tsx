@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -41,38 +41,38 @@ export default function EditPatientPage() {
     },
   });
 
+  const fetchPatient = useCallback(async () => {
+    if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
+      setDataLoading(false);
+      setPageLoading(false);
+      if (!authLoading && !user) router.push("/login");
+      return;
+    }
+    setDataLoading(true);
+    setPageLoading(true);
+    try {
+      const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+      const docSnap = await getFirestoreDoc(patientDocRef);
+      if (docSnap.exists() && docSnap.data().doctorId === user.uid) {
+        const fetchedPatientData = docSnap.data() as Patient; 
+        setPatientData(fetchedPatientData);
+        form.reset({
+          complications: fetchedPatientData.complications,
+        });
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Patient not found or you do not have permission to edit." });
+        router.push("/doctor/patients");
+      }
+    } catch (error) {
+      console.error("Error fetching patient for edit:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load patient data for editing." });
+    } finally {
+      setDataLoading(false);
+      setPageLoading(false);
+    }
+  }, [patientId, user, userProfile, authLoading, router, toast, form, setPageLoading]);
+
   useEffect(() => {
-    const fetchPatient = async () => {
-      if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
-        setDataLoading(false);
-        setPageLoading(false);
-        if (!authLoading && !user) router.push("/login");
-        return;
-      }
-      setDataLoading(true);
-      setPageLoading(true);
-      try {
-        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        const docSnap = await getFirestoreDoc(patientDocRef);
-        if (docSnap.exists() && docSnap.data().doctorId === user.uid) {
-          const fetchedPatientData = docSnap.data() as Patient; 
-          setPatientData(fetchedPatientData);
-          form.reset({
-            complications: fetchedPatientData.complications,
-          });
-        } else {
-          toast({ variant: "destructive", title: "Error", description: "Patient not found or you do not have permission to edit." });
-          router.push("/doctor/patients");
-        }
-      } catch (error) {
-        console.error("Error fetching patient for edit:", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to load patient data for editing." });
-      } finally {
-        setDataLoading(false);
-        setPageLoading(false);
-      }
-    };
-    
     if (!authLoading && user && userProfile?.role === 'doctor') {
       fetchPatient();
     } else if (!authLoading && !user) {
@@ -80,8 +80,7 @@ export default function EditPatientPage() {
        setPageLoading(false);
        router.push("/login");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, user, userProfile, authLoading, router, toast]); 
+  }, [authLoading, user, userProfile, router, fetchPatient]);
 
   const onSubmit = async (data: PatientFormValues) => {
     if (!user || !db || !patientId || userProfile?.role !== 'doctor' || !patientData) {
