@@ -34,7 +34,6 @@ export default function PatientMedicationsPage() {
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
@@ -42,6 +41,7 @@ export default function PatientMedicationsPage() {
         if (patientSnapshot.empty) return;
         
         const patientIds = patientSnapshot.docs.map(d => d.id);
+        if (patientIds.length === 0) return;
 
         const appointmentsQuery = query(
           collection(db, APPOINTMENTS_COLLECTION),
@@ -53,7 +53,7 @@ export default function PatientMedicationsPage() {
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
         const allPrescriptions = appointmentsSnapshot.docs.flatMap(doc => {
           const appointment = { id: doc.id, ...doc.data() } as Appointment;
-          return appointment.prescriptions.map(p => ({
+          return (appointment.prescriptions || []).map(p => ({
             ...p,
             reminderEnabled: true, // Default state
             appointmentId: appointment.id,

@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Pill, MessageSquareHeart, FileText, User, Loader2 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db, collection, query, where, getDocs, limit, orderBy, Timestamp, doc, getFirestoreDoc, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
 import { Appointment, PrescribedMedicine, UserProfile } from "@/types/homeoconnect";
@@ -32,22 +31,23 @@ export default function PatientDashboardPage() {
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
-        const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid), limit(1));
+        const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
         const patientSnapshot = await getDocs(patientQuery);
 
         if (patientSnapshot.empty) {
           toast({ variant: "default", title: "No Patient Record", description: "No patient record linked to your account. Please contact your doctor." });
           return;
         }
-        const patientRecord = { id: patientSnapshot.docs[0].id, ...patientSnapshot.docs[0].data() };
+        
+        const patientIds = patientSnapshot.docs.map(d => d.id);
+        if (patientIds.length === 0) return;
 
         // Fetch upcoming appointment
         const appointmentQuery = query(
           collection(db, APPOINTMENTS_COLLECTION),
-          where("patientId", "==", patientRecord.id),
+          where("patientId", "in", patientIds),
           where("status", "==", "scheduled"),
           where("appointmentDate", ">=", Timestamp.now()),
           orderBy("appointmentDate"),
@@ -56,7 +56,8 @@ export default function PatientDashboardPage() {
         const appointmentSnapshot = await getDocs(appointmentQuery);
 
         if (!appointmentSnapshot.empty) {
-          const apt = { id: appointmentSnapshot.docs[0].id, ...appointmentSnapshot.docs[0].data() } as Appointment;
+          const aptDoc = appointmentSnapshot.docs[0];
+          const apt = { id: aptDoc.id, ...aptDoc.data(), appointmentDate: (aptDoc.data().appointmentDate as Timestamp) } as Appointment;
           const doctorDocRef = doc(db, USERS_COLLECTION, apt.doctorId);
           const doctorSnap = await getFirestoreDoc(doctorDocRef);
           const doctorName = doctorSnap.exists() ? (doctorSnap.data() as UserProfile).displayName : "Doctor";
@@ -66,7 +67,7 @@ export default function PatientDashboardPage() {
         // Fetch recent medications from last completed appointment
         const medicationQuery = query(
           collection(db, APPOINTMENTS_COLLECTION),
-          where("patientId", "==", patientRecord.id),
+          where("patientId", "in", patientIds),
           where("status", "==", "completed"),
           orderBy("appointmentDate", "desc"),
           limit(1)
@@ -143,9 +144,7 @@ export default function PatientDashboardPage() {
         <Card className="shadow-md">
             <CardContent className="p-6 text-center text-muted-foreground">
                 <p>No upcoming appointments. </p>
-                 <Link href="/patient/appointments">
-                    <Button variant="link" className="p-0 h-auto">Request a new appointment</Button>
-                </Link>
+                 <p className="text-sm">Contact your clinic to schedule one.</p>
             </CardContent>
         </Card>
       )}
@@ -162,8 +161,8 @@ export default function PatientDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {currentMedications.length > 0 ? (
-              currentMedications.map((med) => (
-                <div key={med.medicineId} className="p-3 border rounded-lg bg-secondary/30">
+              currentMedications.map((med, index) => (
+                <div key={`${med.medicineId}-${index}`} className="p-3 border rounded-lg bg-secondary/30">
                   <p className="font-semibold">{med.medicineName}</p>
                   <p className="text-sm text-muted-foreground">{med.quantity}</p>
                 </div>

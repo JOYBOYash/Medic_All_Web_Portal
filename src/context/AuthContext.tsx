@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, USERS_COLLECTION, getFirestoreDoc, setFirestoreDoc } from '@/lib/firebase'; // Adjusted imports
@@ -18,6 +18,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<UserCredentialWrapper | { error: string }>;
   signup: (email: string, password: string, role: 'doctor' | 'patient', displayName: string) => Promise<UserCredentialWrapper | { error: string, errorCode?: string }>;
   logout: () => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
 }
 
 interface UserCredentialWrapper {
@@ -34,62 +35,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
+  const fetchUserProfile = useCallback(async (firebaseUser: User) => {
+    const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+    try {
+      const userDocSnap = await getFirestoreDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        const profileData = userDocSnap.data() as UserProfile;
+        setUserProfile(profileData);
+        return profileData;
+      } else {
+        throw new Error("User profile not found in Firestore.");
+      }
+    } catch (error) {
+      console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
+      throw error; // Re-throw to be caught by the caller
+    }
+  }, []);
+
+  const logoutHandler = useCallback(async (options?: { suppressRedirect?: boolean }) => {
+    setIsPageLoading(true);
+    try {
+      await signOut(auth);
+      // onAuthStateChanged will set user to null, which will trigger the useEffect below
+      if (!options?.suppressRedirect) {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+      setUser(null); setUserProfile(null); setLoading(false); setIsPageLoading(false);
+      if (!options?.suppressRedirect) {
+        router.push('/login');
+      }
+    }
+  }, [router]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
-
       if (firebaseUser) {
-        const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
         try {
-          const userDocSnap = await getFirestoreDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const profileData = userDocSnap.data() as UserProfile;
-            setUser(firebaseUser);
-            setUserProfile(profileData);
-          } else {
-            console.warn("No user profile found in Firestore for UID:", firebaseUser.uid, "Logging out.");
-            toast({
-              variant: "destructive",
-              title: "Login Failed",
-              description: "User profile not found. Please contact support.",
-            });
-            await signOut(auth);
-          }
-        } catch (error) {
-          console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
+          await fetchUserProfile(firebaseUser);
+          setUser(firebaseUser);
+        } catch (error: any) {
           toast({
             variant: "destructive",
             title: "Login Failed",
-            description: "An error occurred while fetching your profile.",
+            description: error.message === "User profile not found in Firestore." 
+              ? "Your user profile could not be found. Please contact support."
+              : "An error occurred while fetching your profile.",
           });
-          await signOut(auth);
-        } finally {
-          setLoading(false);
+          await logoutHandler({ suppressRedirect: true });
         }
       } else {
         setUser(null);
         setUserProfile(null);
-        setLoading(false);
       }
+      setLoading(false);
     });
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const logoutHandler = async () => {
-    setIsPageLoading(true);
-    try {
-      await signOut(auth);
-      // onAuthStateChanged will set user to null, which will trigger the useEffect below to redirect to /login
-    } catch (error) {
-      console.error("Logout error:", error);
-      setUser(null); setUserProfile(null); setLoading(false); setIsPageLoading(false);
-      router.push('/login');
-    }
-  };
+  }, [fetchUserProfile, logoutHandler]);
 
   useEffect(() => {
-    // If auth state is still being determined, show a full-page loader.
     if (loading) {
       setIsPageLoading(true);
       return;
@@ -98,59 +104,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
     const isProtectedPath = pathname.startsWith('/doctor') || pathname.startsWith('/patient');
 
-    // If user IS logged in
     if (user && userProfile) {
-      // And they are on an auth page, redirect them to their dashboard
       if (isAuthPage) {
-        setIsPageLoading(true); // Show loader for the redirect
+        setIsPageLoading(true);
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
-        return; // End execution for this render
+        return;
       }
 
-      // If they are on a protected page, ensure it's the correct one for their role.
       const isCorrectPath = (pathname.startsWith('/doctor') && userProfile.role === 'doctor') ||
                             (pathname.startsWith('/patient') && userProfile.role === 'patient');
 
       if (isProtectedPath && !isCorrectPath) {
-        // Role mismatch - log them out and redirect.
-        // Add a toast to inform the user why they are being logged out.
         toast({
           variant: "destructive",
           title: "Access Denied",
           description: "You are not authorized for that role's dashboard.",
         });
-        logoutHandler(); // This will trigger redirect to login via onAuthStateChanged
+        logoutHandler();
         return;
       }
-    }
-    // If user is NOT logged in
-    else {
-      // And they are on a protected page, redirect to login
+    } else {
       if (isProtectedPath) {
         setIsPageLoading(true);
         router.replace('/login');
         return;
       }
     }
-    
-    // If none of the above redirect conditions are met, the page can finish loading.
-    // This handles cases like being on a public page while logged out.
-    // Individual pages are responsible for setting this to false when their content loads.
-    // setIsPageLoading(false);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, loading, pathname, router]);
-
+  }, [user, userProfile, loading, pathname, router, logoutHandler]);
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
-    setIsPageLoading(true); // Start loading indicator immediately on click
+    setIsPageLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle the rest of the logic, including redirect.
+      // onAuthStateChanged will handle the rest
       return { user: userCredential.user };
     } catch (error: any) {
-      setIsPageLoading(false); // Stop loading on error
+      setIsPageLoading(false);
       let errorMessage = "Failed to login. Please check your credentials.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
@@ -166,7 +156,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const firebaseUser = userCredential.user;
       
       const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-      const newUserProfile: UserProfile = {
+      const newUserProfile: Omit<UserProfile, 'createdAt' | 'updatedAt'> = {
         id: firebaseUser.uid,
         email: firebaseUser.email,
         role,
@@ -174,11 +164,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         photoURL: firebaseUser.photoURL || null, 
         contactNumber: "",
         address: "",
+      };
+      await setFirestoreDoc(userDocRef, {
+        ...newUserProfile,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      };
-      await setFirestoreDoc(userDocRef, newUserProfile); 
-      // Do not sign out here, let them log in.
+      });
       return { user: firebaseUser };
     } catch (error: any) {
       setIsPageLoading(false);
@@ -189,13 +180,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { error: errorMessage, errorCode: error.code };
     }
   };
+  
+  const refreshUserProfile = async () => {
+    if (user) {
+        await fetchUserProfile(user);
+    }
+  };
 
   const setPageLoadingHandler = (isLoading: boolean) => {
     setIsPageLoading(isLoading);
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, isPageLoading, setPageLoading: setPageLoadingHandler, login, signup, logout: logoutHandler }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, isPageLoading, setPageLoading: setPageLoadingHandler, login, signup, logout: logoutHandler, refreshUserProfile }}>
       {children}
     </AuthContext.Provider>
   );

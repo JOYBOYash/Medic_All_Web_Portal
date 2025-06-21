@@ -4,26 +4,21 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Save, Loader2, LinkIcon } from "lucide-react";
+import { ArrowLeft, Save, Loader2, LinkIcon, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { PATIENTS_COLLECTION, USERS_COLLECTION, doc, getFirestoreDoc, updateDoc, serverTimestamp, db, query, where, getDocs, collection } from "@/lib/firebase";
-import type { Patient, UserProfile } from "@/types/homeoconnect";
+import { PATIENTS_COLLECTION, doc, getFirestoreDoc, updateDoc, serverTimestamp, db } from "@/lib/firebase";
+import type { Patient } from "@/types/homeoconnect";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 const patientFormSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
-  age: z.coerce.number().min(0, { message: "Age must be a positive number." }).max(120),
-  sex: z.enum(["male", "female", "other"], { required_error: "Sex is required." }),
   complications: z.string().min(5, { message: "Please describe complications (min 5 characters)." }),
 });
 
@@ -36,16 +31,12 @@ export default function EditPatientPage() {
 
   const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
   const { toast } = useToast();
-  const [dataLoading, setDataLoading] = useState(true); 
-  const [initialEmail, setInitialEmail] = useState<string | undefined | null>(undefined); // To track original email
+  const [dataLoading, setDataLoading] = useState(true);
+  const [patientData, setPatientData] = useState<Patient | null>(null);
   
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientFormSchema),
     defaultValues: {
-      name: "",
-      email: "",
-      age: "" as unknown as number,
-      sex: undefined,
       complications: "",
     },
   });
@@ -64,15 +55,11 @@ export default function EditPatientPage() {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         const docSnap = await getFirestoreDoc(patientDocRef);
         if (docSnap.exists() && docSnap.data().doctorId === user.uid) {
-          const patientData = docSnap.data() as Patient; 
+          const fetchedPatientData = docSnap.data() as Patient; 
+          setPatientData(fetchedPatientData);
           form.reset({
-            name: patientData.name,
-            email: patientData.email || "",
-            age: patientData.age, 
-            sex: patientData.sex,
-            complications: patientData.complications,
+            complications: fetchedPatientData.complications,
           });
-          setInitialEmail(patientData.email);
         } else {
           toast({ variant: "destructive", title: "Error", description: "Patient not found or you do not have permission to edit." });
           router.push("/doctor/patients");
@@ -97,69 +84,19 @@ export default function EditPatientPage() {
   }, [patientId, user, userProfile, authLoading, router, toast]); 
 
   const onSubmit = async (data: PatientFormValues) => {
-    if (!user || !db || !patientId || userProfile?.role !== 'doctor') {
-      toast({ variant: "destructive", title: "Error", description: "You are not authorized or database is not available." });
+    if (!user || !db || !patientId || userProfile?.role !== 'doctor' || !patientData) {
+      toast({ variant: "destructive", title: "Error", description: "You are not authorized or patient data is missing." });
       return;
     }
-
-    let authUidToUpdate: string | null = null; // Default to null (unlink)
-    const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-    const existingPatientDoc = await getFirestoreDoc(patientDocRef);
-
-    if (!existingPatientDoc.exists() || existingPatientDoc.data()?.doctorId !== user.uid) {
-       toast({ variant: "destructive", title: "Error", description: "Patient not found or update not permitted." });
-       return;
-    }
     
-    const currentPatientData = existingPatientDoc.data() as Patient;
-    authUidToUpdate = currentPatientData.authUid || null; // Preserve existing link by default
-
-    // Only search for user account if email is provided and has changed or was initially undefined
-    if (data.email && (data.email !== initialEmail || initialEmail === undefined)) {
-      try {
-        const patientUserQuery = query(
-          collection(db, USERS_COLLECTION),
-          where("email", "==", data.email),
-          where("role", "==", "patient")
-        );
-        const querySnapshot = await getDocs(patientUserQuery);
-        if (!querySnapshot.empty) {
-          const foundPatientProfile = querySnapshot.docs[0].data() as UserProfile;
-          authUidToUpdate = querySnapshot.docs[0].id; // UID of the found user
-          toast({
-            title: "Patient Account Linked",
-            description: `Record updated to link with ${foundPatientProfile.displayName} (${data.email}).`,
-          });
-        } else {
-          authUidToUpdate = null; // Email provided, but no matching user found, so unlink
-          toast({
-            title: "No Matching Patient Account",
-            description: `No Medicall patient account found for ${data.email}. The record will be unlinked if it was previously linked.`,
-            duration: 7000,
-          });
-        }
-      } catch (error) {
-        console.error("Error searching for patient user account during edit:", error);
-        toast({ variant: "destructive", title: "Search Error", description: "Could not verify new patient email. Link status may be unchanged." });
-        // Potentially revert authUidToUpdate to initial state if search fails critically
-        authUidToUpdate = currentPatientData.authUid || null;
-      }
-    } else if (!data.email && initialEmail) {
-      // Email was removed, so unlink
-      authUidToUpdate = null;
-      toast({ title: "Patient Account Unlinked", description: "Email was removed, so the patient account link has been removed." });
-    }
-
+    const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
 
     try {
       await updateDoc(patientDocRef, {
-        ...data, 
-        email: data.email || null,
-        authUid: authUidToUpdate,
-        doctorId: currentPatientData.doctorId, 
+        complications: data.complications,
         updatedAt: serverTimestamp(),
       });
-      toast({ title: "Success", description: `Patient "${data.name}" updated successfully.` });
+      toast({ title: "Success", description: `Patient "${patientData.name}" updated successfully.` });
       router.push(`/doctor/patients/${patientId}`); 
     } catch (error) {
       console.error("Error updating patient:", error);
@@ -171,6 +108,10 @@ export default function EditPatientPage() {
     return null; 
   }
 
+  if (!patientData) {
+    return <div>Patient not found.</div>
+  }
+
   return (
     <div className="space-y-6">
        <div className="flex items-center gap-4">
@@ -180,100 +121,50 @@ export default function EditPatientPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Edit Patient Details</h1>
-          <p className="text-muted-foreground">Update the patient's information.</p>
+          <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Edit Patient Clinical Notes</h1>
+          <p className="text-muted-foreground">Update the patient's clinic-specific information.</p>
         </div>
       </div>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="font-headline">Patient Information</CardTitle>
-          <CardDescription>Modify the fields below as needed. Updating the email can link/unlink their Medicall account.</CardDescription>
+          <CardTitle className="font-headline flex items-center gap-2"><User className="text-primary"/>Patient Record</CardTitle>
+          <CardDescription>Patient-managed details are read-only. You can edit the clinical notes for your record.</CardDescription>
         </CardHeader>
         <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <FormItem>
+                    <FormLabel>Full Name</FormLabel>
+                    <Input value={patientData.name} readOnly disabled />
+                </FormItem>
+                 <FormItem>
+                    <FormLabel>Email Address</FormLabel>
+                    <Input value={patientData.email} readOnly disabled />
+                </FormItem>
+                 <FormItem>
+                    <FormLabel>Age</FormLabel>
+                    <Input value={patientData.age} readOnly disabled />
+                </FormItem>
+                 <FormItem>
+                    <FormLabel>Sex</FormLabel>
+                    <Input value={patientData.sex} className="capitalize" readOnly disabled />
+                </FormItem>
+            </div>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Full Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., John Doe" {...field} />
-                    </FormControl>
-                    <FormDescription>Enter the patient's full legal name.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Patient's Email Address (Optional)</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="patient@example.com" {...field} />
-                    </FormControl>
-                    <FormDescription>Updates the email on record. If it matches a Medicall patient account, it will be linked.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <FormField
-                  control={form.control}
-                  name="age"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Age</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="e.g., 35" {...field} value={field.value === undefined || field.value === null ? '' : String(field.value)} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="sex"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Sex</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}> 
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select sex" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
               <FormField
                 control={form.control}
                 name="complications"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Health Complications</FormLabel>
+                    <FormLabel>Health Complications / Clinical Notes</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe the patient's primary health issues, symptoms, medical history..."
+                        placeholder="Describe the patient's primary health issues, symptoms, medical history for this clinic..."
                         className="resize-y min-h-[120px]"
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>Be as detailed as possible.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -295,4 +186,3 @@ export default function EditPatientPage() {
     </div>
   );
 }
-    

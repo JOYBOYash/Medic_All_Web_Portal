@@ -7,9 +7,10 @@ export interface UserProfile {
   role: 'doctor' | 'patient';
   displayName?: string | null;
   photoURL?: string | null;
-  createdAt?: Timestamp; // Firestore Timestamp
   contactNumber?: string;
   address?: string;
+  createdAt?: Timestamp; // Firestore Timestamp
+  updatedAt?: Timestamp; // Firestore Timestamp
 }
 
 export interface ClinicDetails {
@@ -24,14 +25,14 @@ export interface ClinicDetails {
 }
 
 export interface Patient {
-  id: string; // Firestore document ID
+  id:string; // Firestore document ID
   doctorId: string; // UID of the doctor who created this patient
   name: string;
   age: number;
   sex: 'male' | 'female' | 'other';
-  email?: string; // Email associated with this patient record by the doctor
+  email: string; // Email associated with this patient record by the doctor, used for linking
   complications: string; // Text area for main health issues
-  authUid?: string | null; // Firebase Auth UID of the linked patient user account
+  authUid: string | null; // Firebase Auth UID of the linked patient user account
   createdAt: Timestamp; // Firestore Timestamp
   updatedAt: Timestamp; // Firestore Timestamp
 }

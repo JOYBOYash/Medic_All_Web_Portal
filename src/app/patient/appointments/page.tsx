@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Appointment, UserProfile } from "@/types/homeoconnect";
 import { format } from "date-fns";
-import { CalendarCheck, CalendarX, History, PlusCircle, MessageCircle, Loader2, Download } from "lucide-react";
+import { CalendarCheck, CalendarX, History, MessageCircle, Loader2, Download } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, collection, query, where, getDocs, doc, getFirestoreDoc, Timestamp, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { db, collection, query, where, getDocs, doc, Timestamp, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 
 interface EnrichedAppointment extends Appointment {
@@ -37,10 +37,9 @@ export default function PatientAppointmentsPage() {
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
-        const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid), where("email", "==", userProfile.email));
+        const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
         const patientSnapshot = await getDocs(patientQuery);
 
         if (patientSnapshot.empty) {
@@ -49,6 +48,7 @@ export default function PatientAppointmentsPage() {
         }
 
         const patientIds = patientSnapshot.docs.map(d => d.id);
+        if (patientIds.length === 0) return;
         
         const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "in", patientIds));
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
@@ -58,12 +58,21 @@ export default function PatientAppointmentsPage() {
         const doctorIds = [...new Set(appointmentsSnapshot.docs.map(d => d.data().doctorId as string))];
         const doctorsMap = new Map<string, UserProfile>();
 
+        // Batch fetch all unique doctors
         if (doctorIds.length > 0) {
-          const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", doctorIds));
-          const doctorsSnapshot = await getDocs(doctorsQuery);
-          doctorsSnapshot.docs.forEach(d => {
-            doctorsMap.set(d.id, { id: d.id, ...d.data() } as UserProfile);
-          });
+            // Firestore 'in' queries are limited to 30 elements. Chunk if necessary.
+            const doctorChunks: string[][] = [];
+            for (let i = 0; i < doctorIds.length; i += 30) {
+                doctorChunks.push(doctorIds.slice(i, i + 30));
+            }
+            
+            for (const chunk of doctorChunks) {
+                 const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", chunk));
+                 const doctorsSnapshot = await getDocs(doctorsQuery);
+                 doctorsSnapshot.docs.forEach(d => {
+                    doctorsMap.set(d.id, { id: d.id, ...d.data() } as UserProfile);
+                 });
+            }
         }
         
         const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => {
