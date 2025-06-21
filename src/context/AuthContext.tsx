@@ -35,8 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true); // Start AuthContext's internal loading
-      // isPageLoading will be managed by the route protection useEffect based on this new auth state
+      setLoading(true);
 
       if (firebaseUser) {
         const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
@@ -48,95 +47,89 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUserProfile(profileData);
           } else {
             console.warn("No user profile found in Firestore for UID:", firebaseUser.uid, "Logging out.");
-            await signOut(auth); // This will re-trigger onAuthStateChanged
+            await signOut(auth);
           }
         } catch (error) {
           console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
-          await signOut(auth); // Error fetching profile, log out.
+          await signOut(auth);
         } finally {
-          setLoading(false); // AuthContext's internal loading finished. Route protection effect will now run.
+          setLoading(false);
         }
       } else {
-        // No firebaseUser (logged out or initial state check)
         setUser(null);
         setUserProfile(null);
-        setLoading(false); // AuthContext's internal loading finished.
+        setLoading(false);
       }
     });
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const logoutHandler = async () => {
+    setIsPageLoading(true);
+    try {
+      await signOut(auth);
+      // onAuthStateChanged will set user to null, which will trigger the useEffect below to redirect to /login
+    } catch (error) {
+      console.error("Logout error:", error);
+      setUser(null); setUserProfile(null); setLoading(false); setIsPageLoading(false);
+      router.push('/login');
+    }
+  };
+
   useEffect(() => {
-    // This effect handles route protection, redirects, and manages isPageLoading based on auth state
-    if (loading) { // If AuthContext is internally busy (fetching profile, initial auth check)
-      setIsPageLoading(true); // The page is effectively loading
+    // If auth state is still being determined, show a full-page loader.
+    if (loading) {
+      setIsPageLoading(true);
       return;
     }
-
-    // AuthContext's internal 'loading' is false. Now, determine page state.
-    let needsRedirect = false;
-    let redirectPath = '';
 
     const isProtectedPath = pathname.startsWith('/doctor') || pathname.startsWith('/patient');
     const isOnPublicRedirectPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
 
-    if (!user) { // No user authenticated
-      if (isProtectedPath) {
-        needsRedirect = true; redirectPath = '/login';
-      } else {
-        // On a public page and no user, this is fine. Page content should load.
-        setIsPageLoading(false);
+    // If user is logged in (and we have their profile)
+    if (user && userProfile) {
+      // If they are on a public page like /login, redirect them to their dashboard.
+      if (isOnPublicRedirectPage) {
+        setIsPageLoading(true); // Show loader for the redirect
+        const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
+        router.replace(destination);
+        return; // End execution for this render
       }
-    } else if (user && userProfile) { // User is authenticated and profile exists
-      if (isProtectedPath) {
-        // User is on a protected path, check role
-        if (pathname.startsWith('/doctor') && userProfile.role !== 'doctor') {
-          needsRedirect = true; logout(); redirectPath = `/login?error=role_mismatch&expected=doctor&actual=${userProfile.role}`;
-        } else if (pathname.startsWith('/patient') && userProfile.role !== 'patient') {
-          needsRedirect = true; logout(); redirectPath = `/login?error=role_mismatch&expected=patient&actual=${userProfile.role}`;
-        }
-        // If role matches, no redirect needed from AuthContext.
-        // DashboardShell's pathname effect will set isPageLoading(true), page must set it false.
-        // If we don't set it false here, page loader might show briefly if page loads faster than DashboardShell effect.
-        // This is okay, as DashboardShell will immediately set it true for the new page component.
-      } else if (isOnPublicRedirectPage) { // User is on a public page but should be redirected
-        needsRedirect = true;
-        if (userProfile.role === 'doctor') redirectPath = '/doctor/dashboard';
-        else if (userProfile.role === 'patient') redirectPath = '/patient/dashboard';
-        else { // Should not happen with defined roles
-            console.error("Unknown user role for redirect:", userProfile.role);
-            needsRedirect = false; // Prevent redirect to unknown state
-            setIsPageLoading(false); // No redirect, ensure loader is off if on public page
-        }
-      } else {
-        // User is on some other page (e.g. custom public page not /login, /signup, /)
-        // This case should generally not lead to loader issues unless it's a misconfigured route.
-        setIsPageLoading(false);
-      }
-    }
 
-    if (needsRedirect && redirectPath) {
-      setIsPageLoading(true); // Ensure loader is on *before* navigation
-      router.replace(redirectPath);
-    } else if (!isProtectedPath && !loading && !user) {
-        // Fallback for ensuring public pages without user don't show loader indefinitely
-        // This might be redundant with the `!user` block above but is a safeguard.
-        setIsPageLoading(false);
+      // If they are on a protected page, ensure it's the correct one for their role.
+      const isCorrectPath = (pathname.startsWith('/doctor') && userProfile.role === 'doctor') ||
+                            (pathname.startsWith('/patient') && userProfile.role === 'patient');
+
+      if (isProtectedPath && !isCorrectPath) {
+        setIsPageLoading(true);
+        logoutHandler(); // This will trigger a redirect to /login via onAuthStateChanged
+        return;
+      }
+    } 
+    // If user is NOT logged in
+    else {
+      // If they are trying to access a protected page, redirect to login.
+      if (isProtectedPath) {
+        setIsPageLoading(true);
+        router.replace('/login');
+        return;
+      }
+
+      // On a public page and not logged in is the correct state. Turn off loader.
+      setIsPageLoading(false);
     }
-    // If on a protected path and no redirect, DashboardShell's effect for 'pathname'
-    // will set isPageLoading(true), and the page component itself is responsible for setting it false.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, loading, pathname, router]); // `logout` is stable
+  }, [user, userProfile, loading, pathname]);
+
 
   const login = async (email: string, password: string): Promise<UserCredentialWrapper | { error: string }> => {
-    setIsPageLoading(true); // Indicate loading for login process
+    setIsPageLoading(true); // Start loading indicator immediately on click
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged & route protection useEffect will handle profile loading, redirects, and further isPageLoading state.
+      // onAuthStateChanged will handle the rest of the logic, including redirect.
       return { user: userCredential.user };
     } catch (error: any) {
-      setIsPageLoading(false); // Turn off loader on login failure
+      setIsPageLoading(false); // Stop loading on error
       let errorMessage = "Failed to login. Please check your credentials.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
@@ -147,7 +140,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<UserCredentialWrapper | { error: string, errorCode?: string }> => {
-    setIsPageLoading(true); // Indicate loading for signup process
+    setIsPageLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
@@ -163,11 +156,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: serverTimestamp(),
       };
       await setFirestoreDoc(userDocRef, newUserProfile); 
-      // onAuthStateChanged & route protection will handle next steps.
-      // Redirect to login page will happen from signup page itself, that page change will handle loader.
       return { user: firebaseUser };
     } catch (error: any) {
-      setIsPageLoading(false); // Turn off loader on signup failure
+      setIsPageLoading(false);
       let errorMessage = "Failed to signup. Please try again.";
       if (error.code === 'auth/email-already-in-use') errorMessage = "This email address is already in use.";
       else if (error.code === 'auth/weak-password') errorMessage = "Password is too weak.";
@@ -176,19 +167,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logoutHandler = async () => {
-    setIsPageLoading(true); // Page will change to /login
-    try {
-      await signOut(auth);
-      // onAuthStateChanged will reset user/profile.
-      // The route protection useEffect will then handle redirect to /login and setIsPageLoading(false) there.
-    } catch (error) {
-      console.error("Logout error:", error);
-      setUser(null); setUserProfile(null); setLoading(false); setIsPageLoading(false); // Reset states on error
-      router.push('/login'); // Fallback redirect
-    } 
-  };
-  
   const setPageLoadingHandler = (isLoading: boolean) => {
     setIsPageLoading(isLoading);
   };
@@ -207,5 +185,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-    
-    
