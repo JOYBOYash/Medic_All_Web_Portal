@@ -5,40 +5,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, DownloadCloud, Loader2 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import { Bell, Palette, ShieldCheck, DownloadCloud } from "lucide-react";
+import React, { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 export default function PatientSettingsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { loading: authLoading, setPageLoading } = useAuth();
   const [medicationReminders, setMedicationReminders] = React.useState(true);
   const [appointmentAlerts, setAppointmentAlerts] = React.useState(true);
   const [darkMode, setDarkMode] = React.useState(false);
-  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (authLoading) {
-      setDataLoading(true);
-      return;
-    }
-    
-    setDataLoading(true);
-    const timer = setTimeout(() => {
-      setDataLoading(false);
+    // This page is ready as soon as auth context is loaded.
+    // DashboardShell turns the loader on, this page turns it off.
+    if (!authLoading) {
       setPageLoading(false);
-    }, 200);
-
-    return () => clearTimeout(timer);
+    }
   }, [authLoading, setPageLoading]);
 
-  if (authLoading || dataLoading) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+  // Let DashboardShell handle the main loading UI.
+  if (authLoading) {
+    return null;
   }
-
 
   return (
     <div className="space-y-8">

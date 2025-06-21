@@ -31,14 +31,6 @@ type UserProfileFormValues = z.infer<typeof userProfileSchema>;
 type ClinicDetailsFormValues = z.infer<typeof clinicDetailsSchema>;
 
 // Mock data - replace with actual data fetching from Firestore
-const mockUser: UserProfile = {
-  id: "doc123",
-  email: "dr.house@example.com",
-  role: "doctor",
-  displayName: "Dr. Gregory House",
-  photoURL: "https://placehold.co/150x150.png?text=DH",
-};
-
 const mockClinic: ClinicDetails = {
   id: "doc123", 
   clinicName: "Princeton-Plainsboro Teaching Hospital (Medicall Wing)",
@@ -48,12 +40,8 @@ const mockClinic: ClinicDetails = {
 };
 
 export default function DoctorProfilePage() {
-  const { user: authUser, userProfile: authUserProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { userProfile, loading: authLoading, setPageLoading } = useAuth();
   
-  const [user, setUser] = useState<UserProfile>(mockUser); 
-  const [clinic, setClinic] = useState<ClinicDetails>(mockClinic); 
-  const [dataLoading, setDataLoading] = useState(true); // Local loader for page content
-
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
     defaultValues: {
@@ -68,69 +56,36 @@ export default function DoctorProfilePage() {
   });
 
   useEffect(() => {
-    if (authLoading) {
-      // Auth context is still loading, so the page is effectively loading.
-      // DashboardShell likely set isPageLoading(true).
-      // Ensure local data loader is also on.
-      setDataLoading(true);
-      return; // Wait for authLoading to become false.
+    // This page is ready as soon as the auth state is resolved.
+    // DashboardShell turns the loader ON, this page turns it OFF.
+    if (!authLoading) {
+      if (userProfile) {
+        profileForm.reset({
+          displayName: userProfile.displayName || "",
+          email: userProfile.email || "",
+        });
+      }
+      clinicForm.reset(mockClinic);
+      setPageLoading(false);
     }
-
-    // authLoading is false, proceed with page setup.
-    setDataLoading(true); // Turn on local loader while forms are reset.
-
-    if (authUserProfile) {
-      setUser(authUserProfile);
-      profileForm.reset({
-        displayName: authUserProfile.displayName || "",
-        email: authUserProfile.email || "",
-      });
-    } else {
-      // Fallback or initial state if authUserProfile isn't immediately available post-authLoading
-      setUser(mockUser); // Or clear, depending on desired behavior
-       profileForm.reset({
-        displayName: mockUser.displayName || "",
-        email: mockUser.email || "",
-      });
-    }
-    
-    // Clinic form uses mock data
-    setClinic(mockClinic);
-    clinicForm.reset(mockClinic);
-
-    // All internal setup is complete.
-    setDataLoading(false); // Turn off the page's internal content loader.
-    setPageLoading(false); // Explicitly turn off the DashboardShell's global loader overlay.
-
-  }, [authLoading, authUserProfile, setPageLoading, profileForm, clinicForm]);
+  }, [authLoading, userProfile, setPageLoading, profileForm, clinicForm]);
 
 
   const onProfileSubmit = (data: UserProfileFormValues) => {
     console.log("Profile update:", data);
-    setUser(prev => ({...prev, ...data}));
     alert("Profile updated successfully (Medicall placeholder)!");
   };
 
   const onClinicSubmit = (data: ClinicDetailsFormValues) => {
     console.log("Clinic details update:", data);
-    setClinic(prev => ({...prev, ...data}));
     alert("Clinic details updated successfully (Medicall placeholder)!");
   };
 
-  // The global loader (isPageLoading) is handled by useEffect.
-  // This 'authLoading' check is for the case where AuthContext is still resolving.
-  // DashboardShell also has a similar guard.
-  if (authLoading) { 
+  // The DashboardShell handles the main loading state (both the full-page initial load,
+  // and the isPageLoading overlay). So, if authLoading is true, DashboardShell shows a loader
+  // and this component doesn't need to render its own content.
+  if (authLoading || !userProfile) { 
     return null; 
-  }
-  
-  // This local 'dataLoading' controls the visibility of the page's own content loader.
-  if (dataLoading) { 
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
   }
 
   return (
@@ -149,8 +104,8 @@ export default function DoctorProfilePage() {
           <CardContent>
             <div className="flex flex-col items-center mb-6">
               <Image
-                src={user.photoURL || "https://placehold.co/150x150.png"}
-                alt={user.displayName || "Doctor"}
+                src={userProfile.photoURL || "https://placehold.co/150x150.png"}
+                alt={userProfile.displayName || "Doctor"}
                 width={150}
                 height={150}
                 className="rounded-full border-4 border-primary shadow-md mb-4"

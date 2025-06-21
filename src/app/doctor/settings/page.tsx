@@ -5,48 +5,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, Loader2 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import { Bell, Palette, ShieldCheck } from "lucide-react";
+import React, { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 
-
 export default function DoctorSettingsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { loading: authLoading, setPageLoading } = useAuth();
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkMode, setDarkMode] = React.useState(false); 
-  const [dataLoading, setDataLoading] = useState(true); // Local loader for page content
-
 
   useEffect(() => {
-    if (authLoading) {
-      // Auth context is still loading, page is effectively loading.
-      // DashboardShell should handle the global loader via isPageLoading.
-      // Ensure local loader is also on.
-      setDataLoading(true);
-      return; // Wait for authLoading to become false.
+    // This page is ready as soon as auth context is loaded.
+    // DashboardShell turns the loader on, this page turns it off.
+    if (!authLoading) {
+      setPageLoading(false);
     }
-
-    // authLoading is false.
-    // This page has minimal setup beyond what AuthContext provides.
-    // Turn off local loader and then global loader.
-    setDataLoading(false); // Turn off the page's internal content loader.
-    setPageLoading(false); // Explicitly turn off the DashboardShell's global loader overlay.
-
   }, [authLoading, setPageLoading]);
 
-  // This guard is mostly for the initial render if AuthContext is still resolving.
-  // DashboardShell also has a similar guard for the global loader.
+  // Let DashboardShell handle the main loading UI.
+  // This component will not render its own content until auth is resolved.
   if (authLoading) { 
     return null; 
-  }
-  
-  // This local 'dataLoading' controls the visibility of this page's own content loader
-  if (dataLoading) { 
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
   }
 
   return (
@@ -131,5 +110,4 @@ export default function DoctorSettingsPage() {
     </div>
   );
 }
-
     
