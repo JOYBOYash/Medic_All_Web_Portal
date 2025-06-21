@@ -37,18 +37,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchUserProfile = useCallback(async (firebaseUser: User) => {
     const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-    try {
-      const userDocSnap = await getFirestoreDoc(userDocRef);
-      if (userDocSnap.exists()) {
+    const userDocSnap = await getFirestoreDoc(userDocRef);
+    if (userDocSnap.exists()) {
         const profileData = userDocSnap.data() as UserProfile;
         setUserProfile(profileData);
         return profileData;
-      } else {
+    } else {
         throw new Error("User profile not found in Firestore.");
-      }
-    } catch (error) {
-      console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
-      throw error; // Re-throw to be caught by the caller
     }
   }, []);
 
@@ -78,21 +73,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await fetchUserProfile(firebaseUser);
           setUser(firebaseUser);
         } catch (error: any) {
-          toast({
-            variant: "destructive",
-            title: "Login Failed",
-            description: error.message === "User profile not found in Firestore." 
-              ? "Your user profile could not be found. Please contact support."
-              : "An error occurred while fetching your profile.",
-          });
-          await logoutHandler({ suppressRedirect: true });
+          const creationTime = new Date(firebaseUser.metadata.creationTime || 0).getTime();
+          const now = new Date().getTime();
+          // Check if the user was created in the last 10 seconds.
+          const isNewUser = (now - creationTime) < 10000;
+
+          if (error.message === "User profile not found in Firestore." && isNewUser) {
+            // This is an expected race condition during signup. The user document is still being created.
+            // We can safely ignore this error, as the user will be redirected to the login page
+            // by the signup flow, and by then, the document will exist.
+            console.warn("User profile not found immediately after signup. This is expected and will be resolved upon login.");
+          } else {
+            // This is a genuine error for an existing user whose profile is missing.
+            console.error("Error fetching user profile for UID:", firebaseUser.uid, error);
+            toast({
+              variant: "destructive",
+              title: "Login Failed",
+              description: error.message === "User profile not found in Firestore."
+                ? "Your user profile could not be found. Please contact support."
+                : "An error occurred while fetching your profile.",
+            });
+            await logoutHandler({ suppressRedirect: true });
+          }
         }
       } else {
         setUser(null);
         setUserProfile(null);
       }
       setLoading(false);
-      // The loader is NOT turned off here. It's turned off by the page component.
+      // The loader is NOT turned off here. It's turned off by the page component or the second useEffect.
     });
     return () => unsubscribe();
   }, [fetchUserProfile, logoutHandler]);
@@ -101,7 +110,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // This effect handles route protection AFTER the auth state is resolved.
     if (loading) {
       // If auth is still loading, we do nothing and wait.
-      // The loader is already on from the onAuthStateChanged effect.
       return;
     }
 
@@ -114,7 +122,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsPageLoading(true);
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
-        // The destination page will be responsible for turning off the loader.
         return;
       }
 
@@ -136,14 +143,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (isProtectedPath) {
         setIsPageLoading(true);
         router.replace('/login');
-        // The login page will be responsible for turning off the loader.
         return;
       }
     }
     
     // If we reach here, it means no redirect is necessary for the current page.
-    // We can let the page component itself manage the loader state.
-    // We do NOT turn the loader off here.
+    // So, we ensure the page loader is off, allowing the page to render.
+    setIsPageLoading(false);
 
   }, [user, userProfile, loading, pathname, router, logoutHandler]);
 
