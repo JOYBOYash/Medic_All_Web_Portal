@@ -29,6 +29,7 @@ export default function DoctorPatientsPage() {
       setDataLoading(false);
       return;
     }
+    // This function can be called from multiple places, so we start its local loader.
     setDataLoading(true);
     try {
       const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
@@ -47,15 +48,20 @@ export default function DoctorPatientsPage() {
       setDataLoading(false);
     }
   }, [user, userProfile, toast]);
-
+  
   useEffect(() => {
-    if (!authLoading && user && userProfile?.role === 'doctor') {
-      setPageLoading(true);
-      fetchPatients().finally(() => setPageLoading(false));
-    } else if (!authLoading) {
-      setPageLoading(false);
+    // This effect is responsible for the initial page load.
+    if (!authLoading) {
+      if (user && userProfile?.role === 'doctor') {
+        setPageLoading(true);
+        fetchPatients().finally(() => setPageLoading(false));
+      } else {
+        // If not a doctor or not logged in, ensure loader is off.
+        setPageLoading(false);
+      }
     }
   }, [authLoading, user, userProfile, fetchPatients, setPageLoading]);
+
 
   const filteredPatients = useMemo(() => {
     return patients
@@ -83,8 +89,9 @@ export default function DoctorPatientsPage() {
         
         toast({ title: "Success", description: `Patient "${patientName}" has been removed from your active list.` });
         
-        // Refetch the entire patient list to guarantee the UI updates correctly.
-        await fetchPatients();
+        // Instead of trying to manipulate local state, just remove the item directly for an immediate UI update.
+        // The underlying data is now archived in the DB.
+        setPatients(prev => prev.filter(p => p.id !== patientId));
 
       } catch (error) {
         console.error("Error removing patient: ", error);
