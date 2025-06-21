@@ -34,6 +34,7 @@ export default function PatientMedicationsPage() {
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
 
       try {
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
@@ -74,6 +75,8 @@ export default function PatientMedicationsPage() {
 
     if (!authLoading && user && userProfile) {
       fetchMedications();
+    } else if (!authLoading) {
+      setPageLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile]);
@@ -131,11 +134,7 @@ export default function PatientMedicationsPage() {
   );
 
   if (authLoading || dataLoading) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return null; // The DashboardShell will display the loader
   }
 
   return (

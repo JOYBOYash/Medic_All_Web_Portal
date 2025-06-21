@@ -48,17 +48,8 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
   const router = useRouter(); // Not directly used for redirect here, AuthContext handles it.
   const { user, userProfile, loading: authContextLoading, logout, isPageLoading, setPageLoading } = useAuth();
 
-  React.useEffect(() => {
-    // This effect triggers the page loader whenever the path changes within the shell.
-    // The newly loaded page component is then responsible for calling setPageLoading(false).
-    // Only set page loading if auth is resolved and user role matches, to avoid premature loader activation.
-    if (!authContextLoading && user && userProfile && userProfile.role === userRole) {
-      setPageLoading(true);
-    }
-  // `setPageLoading` is stable. Dependencies are to ensure conditions are met.
-  // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, [pathname, authContextLoading, user, userProfile, userRole]);
-
+  // The main loading logic is now handled by AuthContext and individual pages.
+  // The problematic useEffect that turned on the loader for every navigation has been removed.
 
   if (authContextLoading || !user || !userProfile) {
     // Show primary loader if auth context is still resolving user or user/profile is null

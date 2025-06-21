@@ -60,6 +60,7 @@ export default function PatientProfilePage() {
         return;
       }
       setDataLoading(true);
+      setPageLoading(true);
 
       try {
         // Fetch all patient records (clinic-specific) linked to this user
@@ -75,6 +76,8 @@ export default function PatientProfilePage() {
         const doctorIds = [...new Set(fetchedClinicRecords.map(rec => rec.doctorId))];
         const doctorsMap = new Map<string, string>();
         if (doctorIds.length > 0) {
+            // Firestore 'in' queries are limited to 10 items for web sdk, chunk if necessary.
+            // For now, assuming less than 10 doctors per patient. If more, chunking is needed.
             const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", doctorIds));
             const doctorsSnapshot = await getDocs(doctorsQuery);
             doctorsSnapshot.forEach(d => doctorsMap.set(d.id, d.data().displayName || "Unknown Doctor"));
@@ -101,6 +104,8 @@ export default function PatientProfilePage() {
     
     if (!authLoading && user && userProfile) {
       fetchProfileData();
+    } else if (!authLoading) {
+      setPageLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile, toast, resetForm]);
@@ -125,11 +130,7 @@ export default function PatientProfilePage() {
   };
 
   if (authLoading || dataLoading) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return null; // The DashboardShell will display the loader
   }
   
   if (!userProfile) return <p>Could not load user profile.</p>
