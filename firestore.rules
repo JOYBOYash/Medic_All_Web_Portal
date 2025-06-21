@@ -3,62 +3,59 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions to check user role and ownership.
-    function isPatient() {
-      return request.auth.token.role == 'patient';
-    }
-
-    function isDoctor() {
-      return request.auth.token.role == 'doctor';
-    }
-
-    // --- COLLECTION RULES ---
-
-    // USERS Collection: Manages user profiles for both doctors and patients.
+    
+    // Users can only read/update their own profile.
     match /users/{userId} {
-      // Allow anyone to read public profile info (e.g., for displaying doctor/patient names).
-      allow read: if true;
-      // Allow a user to create and update only their own profile.
-      allow write: if request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == userId;
+      allow update: if request.auth.uid == userId;
+      allow delete: if false;
     }
-
-    // PATIENTS Collection: Clinic-specific records created by doctors.
-    match /patients/{patientId} {
-      // A doctor can read a patient record if they are assigned to that patient.
-      // A patient can read their own records from any clinic they are part of.
-      allow read: if (isDoctor() && get(/databases/$(database)/documents/patients/$(patientId)).data.doctorId == request.auth.uid)
-                  || (isPatient() && get(/databases/$(database)/documents/patients/$(patientId)).data.authUid == request.auth.uid);
-
-      // A doctor can create a patient record, but they must be the doctor of record.
-      allow create: if isDoctor() && request.resource.data.doctorId == request.auth.uid;
-
-      // Only the assigned doctor can update or delete the record.
-      // The doctorId cannot be changed after creation.
-      allow update: if isDoctor() && resource.data.doctorId == request.auth.uid && request.resource.data.doctorId == resource.data.doctorId;
-      allow delete: if isDoctor() && resource.data.doctorId == request.auth.uid;
-    }
-
-    // MEDICINES Collection: A doctor's private list of medicines.
+    
+    // Medicines can be read by any authenticated user, but only managed by the doctor who created them.
     match /medicines/{medicineId} {
-        // A doctor can create a medicine, assigning it to themselves.
-        allow create: if isDoctor() && request.resource.data.doctorId == request.auth.uid;
-        // Only the doctor who created the medicine can read, update, or delete it.
-        allow read, update, delete: if isDoctor() && resource.data.doctorId == request.auth.uid;
+      allow read: if request.auth != null;
+      allow create, update: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+                          && request.resource.data.doctorId == request.auth.uid;
+      allow delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+                     && resource.data.doctorId == request.auth.uid;
     }
 
-    // APPOINTMENTS Collection: Records of patient consultations.
+    // Doctors manage patient records; Patients can read their own records.
+    match /patients/{patientId} {
+      function isDoctorOfPatient() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+               && resource.data.doctorId == request.auth.uid;
+      }
+      
+      function isPatientSelf() {
+        return resource.data.authUid == request.auth.uid;
+      }
+
+      allow read: if isDoctorOfPatient() || isPatientSelf();
+      
+      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+                                     && request.auth.uid == request.resource.data.doctorId;
+    }
+
+    // Doctors manage appointments; Patients can read their own.
     match /appointments/{appointmentId} {
-        // A doctor can read an appointment they created.
-        // A patient can read an appointment if it is linked to one of their patient records.
-        allow read: if (isDoctor() && get(/databases/$(database)/documents/appointments/$(appointmentId)).data.doctorId == request.auth.uid)
-                 || (isPatient() && get(/databases/$(database)/documents/patients/$(get(/databases/$(database)/documents/appointments/$(appointmentId)).data.patientId)).data.authUid == request.auth.uid);
+      function isDoctorOfAppointment() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+               && resource.data.doctorId == request.auth.uid;
+      }
 
-        // A doctor can create an appointment, assigning themselves as the doctor.
-        allow create: if isDoctor() && request.resource.data.doctorId == request.auth.uid;
+      function isPatientOfAppointment() {
+        // A patient can see an appointment if the appointment's patientId links to a patient record
+        // that has the patient's authUid. This is the secure way to check.
+        let patientRecord = get(/databases/$(database)/documents/patients/$(resource.data.patientId));
+        return patientRecord.data.authUid == request.auth.uid;
+      }
 
-        // Only the assigned doctor can update or delete the appointment.
-        allow update, delete: if isDoctor() && resource.data.doctorId == request.auth.uid;
+      allow read: if isDoctorOfAppointment() || isPatientOfAppointment();
+
+      allow create, update, delete: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor'
+                                     && request.auth.uid == request.resource.data.doctorId;
     }
   }
 }
