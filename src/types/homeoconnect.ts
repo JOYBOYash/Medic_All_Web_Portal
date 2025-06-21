@@ -8,6 +8,8 @@ export interface UserProfile {
   displayName?: string | null;
   photoURL?: string | null;
   createdAt?: Timestamp; // Firestore Timestamp
+  contactNumber?: string;
+  address?: string;
 }
 
 export interface ClinicDetails {
@@ -94,4 +96,3 @@ export const commonSymptomsOptions: { value: string; label: string }[] = [
   { value: 'sore_throat', label: 'Sore Throat' },
   { value: 'loss_of_appetite', label: 'Loss of Appetite' },
 ];
-

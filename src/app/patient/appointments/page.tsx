@@ -2,59 +2,108 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Appointment } from "@/types/homeoconnect";
+import { Appointment, UserProfile } from "@/types/homeoconnect";
 import { format } from "date-fns";
-import { CalendarCheck, CalendarX, History, PlusCircle, Download, MessageCircle, Loader2 } from "lucide-react";
+import { CalendarCheck, CalendarX, History, PlusCircle, MessageCircle, Loader2, Download } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
+import { db, collection, query, where, getDocs, doc, getFirestoreDoc, Timestamp, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data - replace with API call
-const mockAppointments: Appointment[] = [
-  { id: "apt1", patientId: "user1", doctorId: "doc1", appointmentDate: new Date(new Date().setDate(new Date().getDate() + 5)), status: "scheduled", prescriptions: [], createdAt: new Date(), updatedAt: new Date(), doctorNotes: "Dr. Eva Green" },
-  { id: "apt2", patientId: "user1", doctorId: "doc2", appointmentDate: new Date(new Date().setDate(new Date().getDate() - 10)), status: "completed", prescriptions: [{ medicineId: "med1", medicineName: "Arnica", quantity: "10 pills", repetition: {morning:true, afternoon:false, evening:true}}], createdAt: new Date(), updatedAt: new Date(), doctorNotes: "Dr. John Appleseed" },
-  { id: "apt3", patientId: "user1", doctorId: "doc1", appointmentDate: new Date(new Date().setDate(new Date().getDate() - 30)), status: "completed", prescriptions: [{ medicineId: "med2", medicineName: "Nux Vomica", quantity: "5 drops", repetition: {morning:true, afternoon:true, evening:true}}], createdAt: new Date(), updatedAt: new Date(), doctorNotes: "Dr. Eva Green" },
-  { id: "apt4", patientId: "user1", doctorId: "doc3", appointmentDate: new Date(new Date().setDate(new Date().getDate() + 12)), status: "scheduled", prescriptions: [], createdAt: new Date(), updatedAt: new Date(), doctorNotes: "Dr. Jane Doe" },
-  { id: "apt5", patientId: "user1", doctorId: "doc2", appointmentDate: new Date(new Date().setDate(new Date().getDate() - 60)), status: "cancelled", prescriptions: [], createdAt: new Date(), updatedAt: new Date(), doctorNotes: "Dr. John Appleseed" },
-];
-
+interface EnrichedAppointment extends Appointment {
+  doctorName?: string;
+  doctorPhotoURL?: string | null;
+}
 
 export default function PatientAppointmentsPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
-  const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments); 
+  const searchParams = useSearchParams();
+  const defaultTab = searchParams.get("tab") === "past" ? "past" : "upcoming";
+  const { toast } = useToast();
+  
+  const [appointments, setAppointments] = useState<EnrichedAppointment[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (authLoading) {
+    const fetchAppointments = async () => {
+      if (!user || !db || !userProfile) {
+        setDataLoading(false);
+        setPageLoading(false);
+        return;
+      }
       setDataLoading(true);
-      return;
+      setPageLoading(true);
+
+      try {
+        const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid), where("email", "==", userProfile.email));
+        const patientSnapshot = await getDocs(patientQuery);
+
+        if (patientSnapshot.empty) {
+          toast({ title: "No Linked Record", description: "No patient record from a clinic is linked to your account." });
+          return;
+        }
+
+        const patientIds = patientSnapshot.docs.map(d => d.id);
+        
+        const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "in", patientIds));
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+
+        if (appointmentsSnapshot.empty) return;
+
+        const doctorIds = [...new Set(appointmentsSnapshot.docs.map(d => d.data().doctorId as string))];
+        const doctorsMap = new Map<string, UserProfile>();
+
+        if (doctorIds.length > 0) {
+          const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", doctorIds));
+          const doctorsSnapshot = await getDocs(doctorsQuery);
+          doctorsSnapshot.docs.forEach(d => {
+            doctorsMap.set(d.id, { id: d.id, ...d.data() } as UserProfile);
+          });
+        }
+        
+        const fetchedAppointments = appointmentsSnapshot.docs.map(docSnap => {
+          const aptData = docSnap.data() as Appointment;
+          const doctor = doctorsMap.get(aptData.doctorId);
+          return {
+            ...aptData,
+            id: docSnap.id,
+            appointmentDate: (aptData.appointmentDate as unknown as Timestamp).toDate(),
+            doctorName: doctor?.displayName || "Unknown Doctor",
+            doctorPhotoURL: doctor?.photoURL,
+          } as EnrichedAppointment;
+        });
+
+        setAppointments(fetchedAppointments);
+
+      } catch (error) {
+        console.error("Error fetching appointments:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to load appointments." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
+      }
+    };
+
+    if (!authLoading && user && userProfile) {
+      fetchAppointments();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, userProfile]);
 
-    // Simulate data fetching for this page
-    setDataLoading(true);
-    const timer = setTimeout(() => {
-      // In a real app, you'd fetch appointments here and then:
-      // setAppointments(fetchedAppointments);
-      setDataLoading(false);
-      setPageLoading(false); // Turn off the global loader
-    }, 500); // Simulate network delay
+  const upcomingAppointments = useMemo(() =>
+    appointments.filter(apt => apt.status === 'scheduled' && new Date(apt.appointmentDate) >= new Date()).sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime()),
+    [appointments]);
 
-    return () => clearTimeout(timer);
-  }, [authLoading, setPageLoading]);
-
-
-  const upcomingAppointments = useMemo(() => 
-    appointments.filter(apt => apt.status === 'scheduled' && new Date(apt.appointmentDate) >= new Date()).sort((a,b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime()), 
-  [appointments]);
-  
-  const pastAppointments = useMemo(() => 
-    appointments.filter(apt => apt.status === 'completed' || apt.status === 'cancelled' || (apt.status === 'scheduled' && new Date(apt.appointmentDate) < new Date())).sort((a,b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()), 
-  [appointments]);
-
-  const AppointmentCard = ({ appointment }: { appointment: Appointment }) => (
+  const pastAppointments = useMemo(() =>
+    appointments.filter(apt => apt.status !== 'scheduled' || new Date(apt.appointmentDate) < new Date()).sort((a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime()),
+    [appointments]);
+    
+  const AppointmentCard = ({ appointment }: { appointment: EnrichedAppointment }) => (
     <Card className="shadow-md hover:shadow-lg transition-shadow w-full">
       <CardHeader>
         <div className="flex justify-between items-start">
@@ -62,9 +111,12 @@ export default function PatientAppointmentsPage() {
             <CardTitle className="font-headline text-lg">
               {format(new Date(appointment.appointmentDate), "PPP 'at' p")}
             </CardTitle>
-            <CardDescription>With {appointment.doctorNotes || "Doctor"}</CardDescription> 
+            <CardDescription className="flex items-center gap-2 pt-1">
+                <Image src={appointment.doctorPhotoURL || `https://placehold.co/24x24.png`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full" data-ai-hint="doctor avatar" />
+                With {appointment.doctorName || "Doctor"}
+            </CardDescription>
           </div>
-          {appointment.status === 'scheduled' && new Date(appointment.appointmentDate) >= new Date() && <CalendarCheck className="h-6 w-6 text-green-500" />}
+          {appointment.status === 'scheduled' && <CalendarCheck className="h-6 w-6 text-green-500" />}
           {appointment.status === 'completed' && <History className="h-6 w-6 text-blue-500" />}
           {appointment.status === 'cancelled' && <CalendarX className="h-6 w-6 text-red-500" />}
         </div>
@@ -74,19 +126,16 @@ export default function PatientAppointmentsPage() {
           <div className="mb-3">
             <h4 className="font-semibold text-sm mb-1">Prescriptions:</h4>
             <ul className="list-disc list-inside text-sm text-muted-foreground">
-              {appointment.prescriptions.map(p => <li key={p.medicineId}>{p.medicineName} - {p.quantity}</li>)}
+              {appointment.prescriptions.map((p, i) => <li key={p.medicineId + i}>{p.medicineName} - {p.quantity}</li>)}
             </ul>
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm"><Download className="mr-1 h-3 w-3" /> View Details</Button>
-          {appointment.status === 'scheduled' && new Date(appointment.appointmentDate) >= new Date() && (
-            <>
-              <Button variant="outline" size="sm">Reschedule</Button>
-              <Button variant="destructive" size="sm">Cancel</Button>
-            </>
+          <Button variant="outline" size="sm" disabled><Download className="mr-1 h-3 w-3" /> View Details</Button>
+          {appointment.status === 'scheduled' && (
+            <Button variant="destructive" size="sm" disabled>Cancel</Button>
           )}
-           <Link href="/patient/chat">
+           <Link href={`/patient/chat?doctorId=${appointment.doctorId}`}>
             <Button variant="ghost" size="sm" className="text-primary"><MessageCircle className="mr-1 h-3 w-3"/> Contact Doctor</Button>
            </Link>
         </div>
@@ -109,14 +158,10 @@ export default function PatientAppointmentsPage() {
           <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">My Appointments</h1>
           <p className="text-muted-foreground">View your upcoming and past appointments.</p>
         </div>
-        <Link href="#schedule-new"> 
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" /> Request New Appointment
-          </Button>
-        </Link>
+         <p className="text-sm text-muted-foreground">To schedule a new appointment, please contact your doctor's clinic directly.</p>
       </div>
 
-      <Tabs defaultValue="upcoming" className="w-full">
+      <Tabs defaultValue={defaultTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
           <TabsTrigger value="past">Past & Cancelled</TabsTrigger>
@@ -130,7 +175,7 @@ export default function PatientAppointmentsPage() {
             <div className="text-center py-10 text-muted-foreground">
               <Image src="https://placehold.co/200x150.png" data-ai-hint="calendar empty" alt="No upcoming appointments" width={200} height={150} className="mx-auto mb-4 rounded-lg"/>
               <p className="font-semibold">No upcoming appointments.</p>
-              <p>Feel free to request a new one if needed.</p>
+              <p>Contact your clinic if you need to schedule one.</p>
             </div>
           )}
         </TabsContent>

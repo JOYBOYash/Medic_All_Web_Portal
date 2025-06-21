@@ -1,94 +1,111 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserProfile, Patient } from "@/types/homeoconnect"; 
+import { UserProfile, Patient } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { UserCircle, Save, ShieldAlert, Contact, Loader2 } from "lucide-react";
+import { UserCircle, Save, ShieldAlert, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
+import { db, doc, updateDoc, serverTimestamp, getFirestoreDoc, query, collection, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
 
 const patientProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short"),
-  email: z.string().email("Invalid email address."), 
-  age: z.coerce.number().min(0).max(120).optional(), 
-  sex: z.enum(["male", "female", "other"]).optional(),
-  symptomsSummary: z.string().optional(), 
+  email: z.string().email("Invalid email address.").optional(), // Email is read-only from auth
   contactNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format.").optional().or(z.literal('')),
   address: z.string().optional(),
 });
 
 type PatientProfileFormValues = z.infer<typeof patientProfileSchema>;
 
-const mockPatientUser: UserProfile & Partial<Patient> & { contactNumber?: string, address?: string, symptomsSummary?: string } = {
-  id: "patient123",
-  email: "patient.zero@example.com",
-  role: "patient",
-  displayName: "Patient Zero",
-  photoURL: "https://placehold.co/150x150.png?text=PZ",
-  age: 33,
-  sex: "male",
-  complications: "Frequent headaches, fatigue (Doctor's view)", 
-  symptomsSummary: "I often get tension headaches, especially in the evening. Also, I feel tired most days.", 
-  contactNumber: "+15551234567",
-  address: "456 Patient Lane, Healthville, CA",
-};
-
 export default function PatientProfilePage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
-  const [profileData, setProfileData] = useState(mockPatientUser); // Replace with real data later
+  const { toast } = useToast();
+  const [patientRecord, setPatientRecord] = useState<Patient | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
   const form = useForm<PatientProfileFormValues>({
     resolver: zodResolver(patientProfileSchema),
-    defaultValues: { 
+    defaultValues: {
       displayName: "",
       email: "",
+      contactNumber: "",
+      address: "",
     },
   });
-  
+
+  const resetForm = useCallback((profile: UserProfile, patient: Patient | null) => {
+    form.reset({
+      displayName: profile.displayName || "",
+      email: profile.email || "",
+      contactNumber: profile.contactNumber || "",
+      address: profile.address || "",
+    });
+  }, [form]);
+
   useEffect(() => {
-    if (authLoading) {
-        setDataLoading(true);
-        return;
-    }
-    
-    setDataLoading(true);
-    // Use data from auth context or mocks to prefill the form
-    if (userProfile) {
-        form.reset({
-            displayName: userProfile.displayName || profileData.displayName || "",
-            email: userProfile.email || profileData.email || "",
-            age: profileData.age,
-            sex: profileData.sex,
-            symptomsSummary: profileData.symptomsSummary,
-            contactNumber: profileData.contactNumber,
-            address: profileData.address,
-        });
-    }
-
-    const timer = setTimeout(() => {
+    const fetchProfileData = async () => {
+      if (!user || !userProfile || !db) {
         setDataLoading(false);
-        setPageLoading(false); // Turn off global loader
-    }, 500);
+        setPageLoading(false);
+        return;
+      }
+      setDataLoading(true);
+      setPageLoading(true);
 
-    return () => clearTimeout(timer);
+      try {
+        const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid), limit(1));
+        const patientSnapshot = await getDocs(patientQuery);
+        
+        let fetchedPatientRecord: Patient | null = null;
+        if (!patientSnapshot.empty) {
+          fetchedPatientRecord = { id: patientSnapshot.docs[0].id, ...patientSnapshot.docs[0].data() } as Patient;
+          setPatientRecord(fetchedPatientRecord);
+        }
+        
+        // Use userProfile from context as the source of truth for editable fields
+        resetForm(userProfile, fetchedPatientRecord);
+
+      } catch (error) {
+        console.error("Error fetching patient profile data:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to load profile data." });
+      } finally {
+        setDataLoading(false);
+        setPageLoading(false);
+      }
+    };
+    
+    if (!authLoading && user && userProfile) {
+      fetchProfileData();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, userProfile, setPageLoading]);
+  }, [authLoading, user, userProfile, toast, resetForm]);
 
-  const onSubmit = (data: PatientProfileFormValues) => {
-    console.log("Patient profile update:", data);
-    // Placeholder: Update user profile in Firebase Auth / Firestore
-    setProfileData(prev => ({ ...prev, ...data }));
-    alert("Profile updated successfully (placeholder)!");
+  const onSubmit = async (data: PatientProfileFormValues) => {
+    if (!user || !db) return;
+    
+    try {
+        const userDocRef = doc(db, USERS_COLLECTION, user.uid);
+        await updateDoc(userDocRef, {
+            displayName: data.displayName,
+            contactNumber: data.contactNumber,
+            address: data.address,
+            updatedAt: serverTimestamp(),
+        });
+        toast({ title: "Success", description: "Your profile has been updated." });
+    } catch (error) {
+        console.error("Error updating profile:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to update profile." });
+    }
   };
 
   if (authLoading || dataLoading) {
@@ -114,8 +131,8 @@ export default function PatientProfilePage() {
         <CardContent>
           <div className="flex flex-col items-center mb-6">
             <Image
-              src={userProfile?.photoURL || profileData.photoURL || "https://placehold.co/150x150.png"}
-              alt={userProfile?.displayName || profileData.displayName || "Patient"}
+              src={userProfile?.photoURL || "https://placehold.co/150x150.png"}
+              alt={userProfile?.displayName || "Patient"}
               width={150}
               height={150}
               className="rounded-full border-4 border-primary shadow-md mb-4"
@@ -142,8 +159,8 @@ export default function PatientProfilePage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
-                      <FormControl><Input type="email" {...field} readOnly /></FormControl>
-                      <FormDescription>Email cannot be changed here.</FormDescription>
+                      <FormControl><Input type="email" {...field} readOnly disabled /></FormControl>
+                      <FormDescription>Email cannot be changed.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -159,37 +176,20 @@ export default function PatientProfilePage() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="age"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Age</FormLabel>
-                      <FormControl><Input type="number" placeholder="Your Age" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="sex"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Sex</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select sex" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                 {patientRecord && (
+                    <>
+                         <FormItem>
+                            <FormLabel>Age</FormLabel>
+                            <FormControl><Input value={patientRecord.age} readOnly disabled /></FormControl>
+                            <FormDescription>Managed by your doctor.</FormDescription>
+                        </FormItem>
+                         <FormItem>
+                            <FormLabel>Sex</FormLabel>
+                             <FormControl><Input value={patientRecord.sex} className="capitalize" readOnly disabled /></FormControl>
+                             <FormDescription>Managed by your doctor.</FormDescription>
+                        </FormItem>
+                    </>
+                )}
               </div>
                <FormField
                   control={form.control}
@@ -202,39 +202,30 @@ export default function PatientProfilePage() {
                     </FormItem>
                   )}
                 />
-              <FormField
-                control={form.control}
-                name="symptomsSummary"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>My Symptoms Summary (Optional)</FormLabel>
-                    <FormControl><Textarea placeholder="Briefly describe your current or recurring symptoms for your doctor's reference." {...field} className="min-h-[100px]"/></FormControl>
-                    <FormDescription>This summary can help your doctor during consultations.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting}>
-                <Save className="mr-2 h-4 w-4" /> {form.formState.isSubmitting ? "Saving..." : "Save Profile Changes"}
+                {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                 {form.formState.isSubmitting ? "Saving..." : "Save Profile Changes"}
               </Button>
             </form>
           </Form>
         </CardContent>
       </Card>
-      
-      <Card className="shadow-lg mt-8">
-        <CardHeader>
-            <CardTitle className="font-headline flex items-center gap-2"><ShieldAlert className="text-destructive"/> Important Medical Information</CardTitle>
-            <CardDescription>This section is managed by your doctor. Contact them for any updates.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <div className="space-y-2 p-4 border rounded-lg bg-secondary/30">
-                <h4 className="font-semibold">Main Health Complications (as per doctor's record):</h4>
-                <p className="text-muted-foreground">{profileData.complications || "Not specified by doctor."}</p>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">If this information is incorrect or outdated, please discuss it with your doctor during your next appointment or via chat.</p>
-        </CardContent>
-      </Card>
+
+      {patientRecord && (
+        <Card className="shadow-lg mt-8">
+            <CardHeader>
+                <CardTitle className="font-headline flex items-center gap-2"><ShieldAlert className="text-destructive"/> Doctor's Notes on Record</CardTitle>
+                <CardDescription>This section is managed by your doctor and cannot be edited by you.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-2 p-4 border rounded-lg bg-secondary/30">
+                    <h4 className="font-semibold">Main Health Complications:</h4>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{patientRecord.complications || "Not specified by doctor."}</p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">If this information is incorrect or outdated, please discuss it with your doctor.</p>
+            </CardContent>
+        </Card>
+      )}
 
     </div>
   );

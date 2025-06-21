@@ -7,9 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquareHeart, Send, Paperclip, UserCircle, Loader2 } from "lucide-react";
+import { MessageSquareHeart, Send, Paperclip, UserCircle, Loader2, ChevronsUpDown } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
+import { UserProfile } from "@/types/homeoconnect";
+import { db, collection, query, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -21,31 +27,59 @@ interface Message {
 
 export default function PatientChatPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { toast } = useToast();
+  
   const [messages, setMessages] = useState<Message[]>([
-    { id: "1", text: "Hello! How can I help you today?", sender: "bot", timestamp: new Date(Date.now() - 60000 * 5), avatar: "https://placehold.co/40x40.png?text=B" },
-    { id: "2", text: "I'm feeling a bit dizzy after taking the new medicine.", sender: "user", timestamp: new Date(Date.now() - 60000 * 3), avatar: "https://placehold.co/40x40.png?text=P" },
-    { id: "3", text: "Okay, can you describe the dizziness? Is it constant or intermittent? This might be Dr. Smith responding.", sender: "doctor", timestamp: new Date(Date.now() - 60000 * 1), avatar: "https://placehold.co/40x40.png?text=DS" },
+    { id: "1", text: "Welcome to Medicall Chat! Please select a doctor to begin your conversation. Note: This is a demo and messages are not sent.", sender: "bot", timestamp: new Date(), avatar: "https://placehold.co/40x40.png?text=B" },
   ]);
   const [inputText, setInputText] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [dataLoading, setDataLoading] = useState(true);
-
+  
+  const [doctors, setDoctors] = useState<UserProfile[]>([]);
+  const [selectedDoctor, setSelectedDoctor] = useState<UserProfile | null>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   useEffect(() => {
-    if (authLoading) {
-      setDataLoading(true);
-      return;
-    }
-    
-    setDataLoading(true);
-    // In a real app, you might fetch recent messages or doctor availability here
-    const timer = setTimeout(() => {
-        setDataLoading(false);
-        setPageLoading(false);
-    }, 300); // Short delay for mock setup
+    const fetchAssociatedDoctors = async () => {
+        if (!user || !userProfile || !db) {
+            setDataLoading(false);
+            setPageLoading(false);
+            return;
+        }
+        setDataLoading(true);
+        setPageLoading(true);
+        try {
+            const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
+            const patientSnapshots = await getDocs(patientQuery);
+            if (patientSnapshots.empty) {
+                toast({ title: "No Doctors Found", description: "You are not yet associated with any doctor's clinic." });
+                return;
+            }
+            const doctorIds = [...new Set(patientSnapshots.docs.map(doc => doc.data().doctorId as string))];
 
-    return () => clearTimeout(timer);
-  }, [authLoading, setPageLoading]);
+            if (doctorIds.length > 0) {
+                const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", doctorIds));
+                const doctorsSnapshot = await getDocs(doctorsQuery);
+                const fetchedDoctors = doctorsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as UserProfile));
+                setDoctors(fetchedDoctors);
+                if(fetchedDoctors.length > 0) {
+                    setSelectedDoctor(fetchedDoctors[0]);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching associated doctors:", error);
+            toast({ variant: "destructive", title: "Error", description: "Could not load your doctors list." });
+        } finally {
+            setDataLoading(false);
+            setPageLoading(false);
+        }
+    };
+    if (!authLoading) {
+      fetchAssociatedDoctors();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, userProfile]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -55,14 +89,14 @@ export default function PatientChatPage() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputText.trim() === "") return;
+    if (inputText.trim() === "" || !selectedDoctor) return;
 
     const newMessage: Message = {
       id: String(Date.now()),
       text: inputText,
       sender: "user",
       timestamp: new Date(),
-      avatar: userProfile?.photoURL || "https://placehold.co/40x40.png?text=P", 
+      avatar: userProfile?.photoURL || "https://placehold.co/40x40.png?text=P",
     };
     setMessages([...messages, newMessage]);
     setInputText("");
@@ -70,7 +104,7 @@ export default function PatientChatPage() {
     setTimeout(() => {
       const botReply: Message = {
         id: String(Date.now() + 1),
-        text: "Thank you for your message. A doctor will review this shortly. If this is an emergency, please call your local emergency number.",
+        text: "Thank you for your message. This is a demo and your message has not been sent. In a real application, a doctor would review this shortly. If this is an emergency, please call your local emergency number.",
         sender: "bot",
         timestamp: new Date(),
         avatar: "https://placehold.co/40x40.png?text=B",
@@ -88,7 +122,7 @@ export default function PatientChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-var(--header-height,4rem)-2rem)] md:h-[calc(100vh-var(--header-height,4rem)-4rem)]"> 
+    <div className="flex flex-col h-[calc(100vh-var(--header-height,4rem)-2rem)] md:h-[calc(100vh-var(--header-height,4rem)-4rem)]">
       <div className="mb-6">
         <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Chat with Your Doctor</h1>
         <p className="text-muted-foreground">Get quick assistance for non-urgent matters. For emergencies, please call appropriate services.</p>
@@ -96,17 +130,52 @@ export default function PatientChatPage() {
 
       <Card className="flex-1 flex flex-col shadow-lg overflow-hidden">
         <CardHeader className="border-b">
-          <div className="flex items-center gap-3">
-            <Image src="https://placehold.co/48x48.png" alt="Doctor Avatar" data-ai-hint="doctor professional" width={48} height={48} className="rounded-full" />
-            <div>
-              <CardTitle className="font-headline text-lg">Dr. Smith (Homeopathy)</CardTitle>
-              <CardDescription className="text-green-500 flex items-center gap-1">
-                <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span> Online
-              </CardDescription>
+           <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <Avatar className="h-12 w-12 border">
+                        <AvatarImage src={selectedDoctor?.photoURL || undefined} alt={selectedDoctor?.displayName || "Doctor"} data-ai-hint="doctor avatar" />
+                        <AvatarFallback>{selectedDoctor?.displayName?.charAt(0) || <UserCircle />}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <CardTitle className="font-headline text-lg">{selectedDoctor?.displayName || "Select a Doctor"}</CardTitle>
+                        <CardDescription className="text-green-500 flex items-center gap-1">
+                            {selectedDoctor && <><span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span> Online</>}
+                        </CardDescription>
+                    </div>
+                </div>
+                <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" role="combobox" aria-expanded={popoverOpen} className="w-[200px] justify-between">
+                            Switch Doctor
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[200px] p-0">
+                        <Command>
+                            <CommandInput placeholder="Search doctor..." />
+                            <CommandList>
+                                <CommandEmpty>No doctors found.</CommandEmpty>
+                                <CommandGroup>
+                                    {doctors.map((doctor) => (
+                                        <CommandItem
+                                            key={doctor.id}
+                                            value={doctor.id}
+                                            onSelect={() => {
+                                                setSelectedDoctor(doctor);
+                                                setPopoverOpen(false);
+                                            }}
+                                        >
+                                            {doctor.displayName}
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            </CommandList>
+                        </Command>
+                    </PopoverContent>
+                </Popover>
             </div>
-          </div>
         </CardHeader>
-        
+
         <ScrollArea className="flex-1 p-4 bg-secondary/20" ref={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((msg) => (
@@ -147,19 +216,20 @@ export default function PatientChatPage() {
 
         <CardContent className="p-0 border-t">
           <form onSubmit={handleSendMessage} className="flex items-center gap-2 p-3 bg-background">
-            <Button variant="ghost" size="icon" type="button">
+            <Button variant="ghost" size="icon" type="button" disabled>
               <Paperclip className="h-5 w-5 text-muted-foreground" />
               <span className="sr-only">Attach file</span>
             </Button>
             <Input
               type="text"
-              placeholder="Type your message..."
+              placeholder={selectedDoctor ? "Type your message..." : "Please select a doctor first"}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               className="flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
               autoComplete="off"
+              disabled={!selectedDoctor}
             />
-            <Button type="submit" size="icon" disabled={!inputText.trim()}>
+            <Button type="submit" size="icon" disabled={!inputText.trim() || !selectedDoctor}>
               <Send className="h-5 w-5" />
               <span className="sr-only">Send message</span>
             </Button>
