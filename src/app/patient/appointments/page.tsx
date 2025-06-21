@@ -59,9 +59,7 @@ export default function PatientAppointmentsPage() {
         const doctorIds = [...new Set(appointmentsSnapshot.docs.map(d => d.data().doctorId as string))];
         const doctorsMap = new Map<string, UserProfile>();
 
-        // Batch fetch all unique doctors
         if (doctorIds.length > 0) {
-            // Firestore 'in' queries are limited to 30 elements. Chunk if necessary.
             const doctorChunks: string[][] = [];
             for (let i = 0; i < doctorIds.length; i += 30) {
                 doctorChunks.push(doctorIds.slice(i, i + 30));
@@ -99,10 +97,8 @@ export default function PatientAppointmentsPage() {
       }
     };
 
-    if (!authLoading && user && userProfile) {
+    if (!authLoading) {
       fetchAppointments();
-    } else if (!authLoading) {
-      setPageLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile]);
@@ -155,8 +151,8 @@ export default function PatientAppointmentsPage() {
     </Card>
   );
 
-  if (authLoading || dataLoading) {
-    return null; // The DashboardShell will display the loader
+  if (dataLoading) {
+    return null;
   }
 
   return (

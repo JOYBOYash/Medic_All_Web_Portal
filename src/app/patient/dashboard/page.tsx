@@ -19,7 +19,7 @@ interface EnrichedAppointment extends Appointment {
 export default function PatientDashboardPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
-  const [dataLoading, setDataLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true); // Local content readiness
   const [upcomingAppointment, setUpcomingAppointment] = useState<EnrichedAppointment | null>(null);
   const [currentMedications, setCurrentMedications] = useState<PrescribedMedicine[]>([]);
 
@@ -27,10 +27,12 @@ export default function PatientDashboardPage() {
     const fetchDashboardData = async () => {
       if (!user || !db || !userProfile) {
         setDataLoading(false);
-        setPageLoading(false);
+        setPageLoading(false); // Ensure loader is off if no user
         return;
       }
+      
       setDataLoading(true);
+      setPageLoading(true);
 
       try {
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
@@ -58,10 +60,17 @@ export default function PatientDashboardPage() {
         if (!appointmentSnapshot.empty) {
           const aptDoc = appointmentSnapshot.docs[0];
           const apt = { id: aptDoc.id, ...aptDoc.data(), appointmentDate: (aptDoc.data().appointmentDate as Timestamp) } as Appointment;
-          const doctorDocRef = doc(db, USERS_COLLECTION, apt.doctorId);
-          const doctorSnap = await getFirestoreDoc(doctorDocRef);
-          const doctorName = doctorSnap.exists() ? (doctorSnap.data() as UserProfile).displayName : "Doctor";
-          setUpcomingAppointment({ ...apt, doctorName: doctorName || "Doctor" });
+          
+          let doctorName = "Doctor";
+          try {
+            const doctorDocRef = doc(db, USERS_COLLECTION, apt.doctorId);
+            const doctorSnap = await getFirestoreDoc(doctorDocRef);
+            if (doctorSnap.exists()) {
+              doctorName = (doctorSnap.data() as UserProfile).displayName || "Doctor";
+            }
+          } catch (e) { console.error("Could not fetch doctor for appointment", e); }
+
+          setUpcomingAppointment({ ...apt, doctorName });
         }
 
         // Fetch recent medications from last completed appointment
@@ -91,7 +100,7 @@ export default function PatientDashboardPage() {
       fetchDashboardData();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, userProfile, toast]);
+  }, [authLoading, user, userProfile]);
 
   const quickAccessActions = [
     { label: "View Past Appointments", href: "/patient/appointments?tab=past", icon: <FileText /> },
@@ -99,12 +108,10 @@ export default function PatientDashboardPage() {
     { label: "Update Profile", href: "/patient/profile", icon: <User /> },
   ];
   
-  if (authLoading || dataLoading) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+  // Let DashboardShell handle main auth loader.
+  // This component will not render its content until its own data is loaded.
+  if (dataLoading) {
+    return null;
   }
 
   return (

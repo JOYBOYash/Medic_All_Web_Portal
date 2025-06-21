@@ -73,10 +73,8 @@ export default function PatientMedicationsPage() {
       }
     };
 
-    if (!authLoading && user && userProfile) {
+    if (!authLoading) {
       fetchMedications();
-    } else if (!authLoading) {
-      setPageLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile]);
@@ -133,8 +131,8 @@ export default function PatientMedicationsPage() {
     </Card>
   );
 
-  if (authLoading || dataLoading) {
-    return null; // The DashboardShell will display the loader
+  if (dataLoading) {
+    return null;
   }
 
   return (

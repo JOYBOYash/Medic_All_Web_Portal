@@ -113,12 +113,8 @@ export default function PatientChatPage() {
     }, 1500);
   };
 
-  if (authLoading || dataLoading) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,4rem)-8rem)]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+  if (dataLoading) {
+    return null;
   }
 
   return (
