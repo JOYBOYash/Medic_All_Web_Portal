@@ -155,7 +155,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
       }
-      console.error("Login error:", error.code, errorMessage);
       return { error: errorMessage };
     }
   };
@@ -173,6 +172,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
         photoURL: firebaseUser.photoURL || null, 
+        contactNumber: "",
+        address: "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
