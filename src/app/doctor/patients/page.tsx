@@ -12,7 +12,7 @@ import Link from "next/link";
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, deleteDoc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -28,7 +28,7 @@ export default function DoctorPatientsPage() {
     
     setPageLoading(true);
     try {
-      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
+      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid), where("status", "!=", "archived"));
       const querySnapshot = await getDocs(q);
       const fetchedPatients = querySnapshot.docs.map(doc => ({ 
         id: doc.id, 
@@ -48,15 +48,12 @@ export default function DoctorPatientsPage() {
   useEffect(() => {
     if (!authLoading && user) {
       fetchPatients();
-    } else if (!authLoading) {
-      setPageLoading(false);
     }
-  }, [authLoading, user, fetchPatients, setPageLoading]);
+  }, [authLoading, user, fetchPatients]);
 
 
   const filteredPatients = useMemo(() => {
     return patients
-      .filter(patient => patient.status !== 'archived')
       .filter(patient =>
         patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (patient.complications && patient.complications.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -64,21 +61,21 @@ export default function DoctorPatientsPage() {
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
-  const handleRemovePatient = async (patientId: string, patientName: string) => {
+  const handleDeletePatient = async (patientId: string, patientName: string) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
-    if (window.confirm(`Are you sure you want to remove "${patientName}" from your active patient list? This will archive their record.`)) {
+    if (window.confirm(`Are you sure you want to permanently delete patient "${patientName}"? This action cannot be undone.`)) {
       setDeletingPatientId(patientId);
       try {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        await updateDoc(patientDocRef, { status: 'archived' });
-        toast({ title: "Success", description: `Patient "${patientName}" has been archived.` });
-        await fetchPatients(); // Re-fetch the patient list from Firestore to ensure UI is in sync.
+        await deleteDoc(patientDocRef);
+        setPatients(prev => prev.filter(p => p.id !== patientId));
+        toast({ title: "Success", description: `Patient "${patientName}" has been deleted.` });
       } catch (error) {
-        console.error("Error removing patient: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to remove patient." });
+        console.error("Error deleting patient: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
       } finally {
         setDeletingPatientId(null);
       }
@@ -195,7 +192,7 @@ export default function DoctorPatientsPage() {
                             </Link>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => handleRemovePatient(patient.id, patient.name)} 
+                              onClick={() => handleDeletePatient(patient.id, patient.name)} 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                               disabled={deletingPatientId === patient.id}
                             >
@@ -204,7 +201,7 @@ export default function DoctorPatientsPage() {
                               ) : (
                                 <Trash2 className="mr-2 h-4 w-4" />
                               )}
-                              {deletingPatientId === patient.id ? 'Removing...' : 'Remove Patient'}
+                              {deletingPatientId === patient.id ? 'Deleting...' : 'Delete Patient'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -233,3 +230,5 @@ export default function DoctorPatientsPage() {
     </div>
   );
 }
+
+    
