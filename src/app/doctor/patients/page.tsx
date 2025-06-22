@@ -75,7 +75,7 @@ export default function DoctorPatientsPage() {
         const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
         await updateDoc(patientDocRef, { status: 'archived' });
         toast({ title: "Success", description: `Patient "${patientName}" has been archived.` });
-        setPatients(prev => prev.filter(p => p.id !== patientId));
+        await fetchPatients(); // Re-fetch the patient list from Firestore to ensure UI is in sync.
       } catch (error) {
         console.error("Error removing patient: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to remove patient." });
