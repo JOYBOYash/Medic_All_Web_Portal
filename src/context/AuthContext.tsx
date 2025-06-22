@@ -25,7 +25,6 @@ interface LoginResult {
   success: boolean;
   error?: string;
   user?: User;
-  userProfile?: UserProfile;
 }
 
 interface SignupResult {
@@ -46,42 +45,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
 
   useEffect(() => {
-    // This effect handles the initial authentication state and subsequent changes.
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // If we already have the profile for this user, don't refetch
-        if (userProfile && userProfile.id === firebaseUser.uid) {
-            setLoading(false);
-            setIsPageLoading(false); // Stop global loader if profile is already loaded
-            return;
-        }
-        
-        // Fetch user profile from Firestore.
-        const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-        try {
-            const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
-                const profile = userDocSnap.data() as UserProfile;
-                setUser(firebaseUser);
-                setUserProfile(profile);
-            } else {
-                // This case should ideally not happen if signup is atomic.
-                // But if it does, it's a critical error.
-                console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found. Logging out.`);
-                await signOut(auth); // This will trigger the onAuthStateChanged listener again to clear state.
+        if (firebaseUser) {
+            // If we have the profile for this UID already, no need to re-process.
+            if (userProfile && userProfile.id === firebaseUser.uid) {
+                setLoading(false);
+                setIsPageLoading(false);
+                return;
             }
-        } catch(e) {
-            console.error("Error fetching user profile during auth state change:", e);
-            await signOut(auth);
-        }
 
-      } else {
-        // No user is signed in
-        setUser(null);
-        setUserProfile(null);
-      }
-      setLoading(false);
-      setIsPageLoading(false);
+            const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+
+            const fetchAndSetProfile = async () => {
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    const profile = { id: userDocSnap.id, ...userDocSnap.data() } as UserProfile;
+                    setUser(firebaseUser);
+                    setUserProfile(profile);
+                    return true;
+                }
+                return false;
+            };
+
+            try {
+                const profileExists = await fetchAndSetProfile();
+
+                if (!profileExists) {
+                    const creationTime = firebaseUser.metadata.creationTime ? new Date(firebaseUser.metadata.creationTime).getTime() : 0;
+                    const lastSignInTime = firebaseUser.metadata.lastSignInTime ? new Date(firebaseUser.metadata.lastSignInTime).getTime() : 0;
+                    const isNewUser = Math.abs(lastSignInTime - creationTime) < 5000; // 5-second window for new user
+
+                    if (isNewUser) {
+                        setTimeout(async () => {
+                            const profileExistsOnRetry = await fetchAndSetProfile();
+                            if (!profileExistsOnRetry) {
+                                console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found on retry. Logging out.`);
+                                await signOut(auth);
+                            }
+                        }, 2500); // Increased retry delay
+                    } else {
+                        console.error(`CRITICAL: Existing user profile for ${firebaseUser.uid} not found. Logging out.`);
+                        await signOut(auth);
+                    }
+                }
+            } catch (e) {
+                console.error("Error processing auth state change:", e);
+                await signOut(auth);
+            }
+        } else {
+            setUser(null);
+            setUserProfile(null);
+        }
+        setLoading(false);
+        setIsPageLoading(false);
     });
 
     return () => unsubscribe();
@@ -89,47 +105,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
   
   useEffect(() => {
-    // This effect handles route protection AFTER the initial auth state is resolved.
-    if (loading) return; // Don't run route protection while still loading auth state
+    if (loading) return;
 
     const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
     const isDoctorRoute = pathname.startsWith('/doctor');
     const isPatientRoute = pathname.startsWith('/patient');
 
     if (user && userProfile) {
-      // User is logged in
       if (isAuthPage) {
-        // If on an auth page, redirect to the appropriate dashboard
         const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
         router.replace(destination);
       } else {
-        // If on a protected page, verify role
         const isCorrectDoctorRoute = isDoctorRoute && userProfile.role === 'doctor';
         const isCorrectPatientRoute = isPatientRoute && userProfile.role === 'patient';
-
-        // If user is on a dashboard that doesn't match their role
         if ((isDoctorRoute || isPatientRoute) && !isCorrectDoctorRoute && !isCorrectPatientRoute) {
           toast({ variant: "destructive", title: "Access Denied", description: "Incorrect role for this dashboard." });
-          logout(); // The logout function will redirect to /login
+          logoutHandler({ suppressRedirect: true }); 
         }
       }
     } else {
-      // No user is logged in
       if (isDoctorRoute || isPatientRoute) {
-        // If trying to access a protected route, redirect to login
         router.replace('/login');
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, loading, pathname, router]);
+  }, [user, userProfile, loading, pathname]);
 
   const login = async (email: string, password: string): Promise<LoginResult> => {
     setIsPageLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting user and userProfile state.
-      // We don't need to manually set it here anymore, preventing race conditions.
-      // The useEffect will handle redirection.
+      // onAuthStateChanged will handle setting state and redirection.
       return { success: true, user: userCredential.user };
     } catch (error: any) {
       let errorMessage = "Failed to login.";
@@ -145,13 +151,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<SignupResult> => {
     setIsPageLoading(true);
     try {
-      // This part remains the same: create user in Auth.
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      // Create the profile document atomically.
-      const newUserProfile: Omit<UserProfile, 'createdAt' | 'updatedAt'> = {
-        id: firebaseUser.uid,
+      const newUserProfile: Omit<UserProfile, 'id' | 'createdAt' | 'updatedAt'> = {
         email: firebaseUser.email,
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
@@ -162,13 +165,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
       await setDoc(userDocRef, {
+        id: firebaseUser.uid,
         ...newUserProfile,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       
-      // Crucially, onAuthStateChanged will now reliably find this document.
-      // We don't set local state here; we let the listener do its job.
+      // onAuthStateChanged will now reliably find this document and handle state updates.
       return { success: true, user: firebaseUser };
 
     } catch (error: any) {
@@ -181,27 +184,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const logoutHandler = useCallback(async () => {
+  const logoutHandler = useCallback(async ({ suppressRedirect = false } = {}) => {
     setIsPageLoading(true);
-    try {
-      await signOut(auth);
-      // onAuthStateChanged will clear user/userProfile state.
-    } catch (error) {
-      console.error("Logout error:", error);
-      toast({ variant: "destructive", title: "Logout Failed", description: "Could not log out. Please try again." });
-    } finally {
-      // Redirect is now handled by the route protection useEffect.
-      setIsPageLoading(false);
+    await signOut(auth);
+    // onAuthStateChanged clears state. The route protection useEffect handles the redirect.
+    if (!suppressRedirect) {
+      router.push('/login');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // No finally block needed for setIsPageLoading(false) because onAuthStateChanged handles it.
+  }, [router]);
 
   const refreshUserProfile = async () => {
     if (user) {
         const userDocRef = doc(db, USERS_COLLECTION, user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
-            setUserProfile(userDocSnap.data() as UserProfile);
+            setUserProfile({ id: userDocSnap.id, ...userDocSnap.data() } as UserProfile);
         }
     }
   };
