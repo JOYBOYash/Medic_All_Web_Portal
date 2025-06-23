@@ -20,7 +20,7 @@ import { format as formatDateFn } from "date-fns";
 import { ArrowLeft, CalendarIcon, PlusCircle, Save, Trash2, Clock, Users, Loader2 } from "lucide-react";
 import { Appointment, Patient, Medicine, PainSeverity, painSeverityOptions, commonSymptomsOptions } from "@/types/homeoconnect";
 import { useAuth } from "@/context/AuthContext";
-import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, Timestamp } from "@/lib/firebase";
+import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, doc, getFirestoreDoc, updateDoc, serverTimestamp, Timestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -103,7 +103,7 @@ export default function EditAppointmentPage() {
       
       // Fetch the specific appointment
       const appointmentDocRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
-      const appointmentDocSnap = await getDoc(appointmentDocRef);
+      const appointmentDocSnap = await getFirestoreDoc(appointmentDocRef);
 
       if (appointmentDocSnap.exists() && appointmentDocSnap.data().doctorId === user.uid) {
         const aptData = appointmentDocSnap.data() as Appointment;
