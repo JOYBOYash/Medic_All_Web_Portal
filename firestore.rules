@@ -1,73 +1,68 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Users collection
+    // Users can read anyone's public profile, but only write to their own.
     match /users/{userId} {
-      // Anyone authenticated can read a user's public profile info.
       allow read: if request.auth != null;
-      // Only the authenticated user can create or update their own profile.
       allow create, update: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Patients collection
+    // Doctors manage their patient records. Patients can read their own records.
     match /patients/{patientId} {
-      // CREATE: A doctor can create a patient record for their clinic.
       allow create: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && request.auth.uid == request.resource.data.doctorId;
-
-      // READ: A doctor can read their own patient records. A patient can read their own linked records.
+      
       allow read: if request.auth != null && 
-                   (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid) ||
-                   (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'patient' && resource.data.authUid == request.auth.uid);
+                   ((get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid) ||
+                   (resource.data.authUid != null && resource.data.authUid == request.auth.uid));
 
-      // UPDATE: A doctor can update a patient record for their clinic.
       allow update: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
-
-      // DELETE: A doctor can delete a patient record from their clinic.
+      
+      // A doctor can delete a patient record from their clinic.
       allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
     }
 
-    // Medicines collection
+    // Doctors manage their own medicine inventory.
     match /medicines/{medicineId} {
-      // Only doctors can manage medicines associated with their ID
-      allow read, write: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' &&
-        (request.resource.data.doctorId == request.auth.uid || resource.data.doctorId == request.auth.uid);
+      allow read, write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && (resource.data.doctorId == request.auth.uid || request.resource.data.doctorId == request.auth.uid);
     }
     
-    // Appointments
+    // Doctors manage appointments. Patients can read their own appointments.
     match /appointments/{appointmentId} {
-      // CREATE/UPDATE: Doctor can manage appointments for their patient.
-      allow create, update: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && 
-        request.auth.uid == request.resource.data.doctorId;
+      allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid;
       
-      // READ: Doctor can read their appointments. Patient can read their own appointments.
-      allow read: if request.auth != null && (
-          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid) ||
-          (
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'patient' &&
-              exists(/databases/$(database)/documents/patients/$(resource.data.patientId)) &&
-              get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.authUid == request.auth.uid
-          )
-      );
-      
-      // DELETE: Doctor can delete their appointments. The rule must check `resource.data` not `request.resource.data`.
-      allow delete: if request.auth != null && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && 
-        request.auth.uid == resource.data.doctorId;
+      allow read: if request.auth != null && 
+                  ((get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' && resource.data.doctorId == request.auth.uid) ||
+                   (get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.authUid == request.auth.uid));
     }
 
-    // Chat Rooms & Messages
+    // Chat Rooms and Messages. Only participants can interact with their chat.
     match /chatRooms/{roomId} {
-        // Allow read/write on the room doc (e.g. updating last message) if user is a participant
-        allow read, write: if request.auth != null && request.auth.uid in roomId.split('_');
+      // Create: Anyone in the room can create it (first message)
+      allow create: if request.auth.uid in request.resource.data.participants;
 
-        match /messages/{messageId} {
-            // Allow read/write on messages if user is a participant in the room
-            allow read, write: if request.auth != null && request.auth.uid in roomId.split('_');
-        }
+      // Read, Update: Only participants can read/update the room (e.g. for lastMessage, unreadCounts)
+      allow read, update: if request.auth.uid in resource.data.participants;
+      
+      // Delete: Only a doctor participant can delete the room.
+      allow delete: if request.auth != null && 
+                     request.auth.uid in resource.data.participants &&
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor';
+
+      match /messages/{messageId} {
+        // Read, Create: Only participants can read/create messages
+        allow read, create: if request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants;
+        
+        // No updates to messages allowed
+        allow update: if false;
+
+        // Delete: Only a doctor participant can delete messages (as part of room deletion)
+        allow delete: if request.auth != null &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor' &&
+                       request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants;
+      }
     }
   }
 }

@@ -12,7 +12,7 @@ import Link from "next/link";
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, collection, query, where, getDocs, doc, writeBatch, deleteDoc } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, CHAT_ROOMS_COLLECTION, collection, query, where, getDocs, doc, writeBatch } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -77,34 +77,52 @@ export default function DoctorPatientsPage() {
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
-  const handleDeletePatient = async (patientId: string, patientName: string) => {
+  const handleRemovePatient = async (patient: Patient) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
-    if (window.confirm(`Are you sure you want to PERMANENTLY DELETE patient "${patientName}"? This will also delete all of their appointments and cannot be undone.`)) {
-      setDeletingPatientId(patientId);
+    if (window.confirm(`Are you sure you want to REMOVE patient "${patient.name}" from your clinic? This will delete all their appointments and chat history with you, but will NOT delete their main Medicall account.`)) {
+      setDeletingPatientId(patient.id);
       try {
         const batch = writeBatch(db);
 
-        // Find and delete all appointments for this patient
-        const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "==", patientId), where("doctorId", "==", user.uid));
+        // 1. Delete all appointments for this patient-doctor link
+        const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "==", patient.id), where("doctorId", "==", user.uid));
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
         appointmentsSnapshot.forEach(doc => {
           batch.delete(doc.ref);
         });
 
-        // Delete the patient document
-        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+        // 2. Delete the chat room and all its messages, if a linked account exists
+        if (patient.authUid) {
+            const ids = [user.uid, patient.authUid];
+            ids.sort();
+            const chatRoomId = ids.join('_');
+            const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
+
+            // Delete messages subcollection
+            const messagesQuery = query(collection(chatRoomRef, "messages"));
+            const messagesSnapshot = await getDocs(messagesQuery);
+            messagesSnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // Delete chat room document
+            batch.delete(chatRoomRef);
+        }
+
+        // 3. Delete the patient document that links the user to the doctor
+        const patientDocRef = doc(db, PATIENTS_COLLECTION, patient.id);
         batch.delete(patientDocRef);
 
         await batch.commit();
         
-        toast({ title: "Success", description: `Patient "${patientName}" and all associated data have been deleted.` });
-        setPatients(prev => prev.filter(p => p.id !== patientId));
+        toast({ title: "Success", description: `Patient "${patient.name}" and all associated data have been removed from your clinic.` });
+        setPatients(prev => prev.filter(p => p.id !== patient.id));
       } catch (error) {
-        console.error("Error deleting patient: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
+        console.error("Error removing patient record: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to remove patient. Please check permissions and try again." });
       } finally {
         setDeletingPatientId(null);
       }
@@ -220,7 +238,7 @@ export default function DoctorPatientsPage() {
                             </Link>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => handleDeletePatient(patient.id, patient.name)} 
+                              onClick={() => handleRemovePatient(patient)} 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                               disabled={deletingPatientId === patient.id}
                             >
@@ -229,7 +247,7 @@ export default function DoctorPatientsPage() {
                               ) : (
                                 <Trash2 className="mr-2 h-4 w-4" />
                               )}
-                              {deletingPatientId === patient.id ? 'Deleting...' : 'Delete Patient'}
+                              {deletingPatientId === patient.id ? 'Removing...' : 'Remove From Clinic'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -258,5 +276,3 @@ export default function DoctorPatientsPage() {
     </div>
   );
 }
-
-    
