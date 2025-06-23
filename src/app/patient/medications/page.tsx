@@ -1,18 +1,19 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { PrescribedMedicine, Appointment } from "@/types/homeoconnect";
-import { Pill, Bell, ListChecks, Loader2 } from "lucide-react";
+import { Pill, Bell, ListChecks, BellRing } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db, collection, query, where, getDocs, orderBy, Timestamp, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useSettings } from "@/context/SettingsContext";
+import { Button } from "@/components/ui/button";
 
 interface MedicationWithContext extends PrescribedMedicine {
   reminderEnabled: boolean;
@@ -23,11 +24,13 @@ interface MedicationWithContext extends PrescribedMedicine {
 export default function PatientMedicationsPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
+  const { notificationPrefs } = useSettings();
   const [medications, setMedications] = useState<MedicationWithContext[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [notificationPermission, setNotificationPermission] = useState('default');
+  const scheduledTimers = useRef<NodeJS.Timeout[]>([]);
 
-  useEffect(() => {
-    const fetchMedications = async () => {
+  const fetchMedications = useCallback(async () => {
       if (!user || !db || !userProfile) {
         setDataLoading(false);
         setPageLoading(false);
@@ -54,12 +57,17 @@ export default function PatientMedicationsPage() {
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
         const allPrescriptions = appointmentsSnapshot.docs.flatMap(doc => {
           const appointment = { id: doc.id, ...doc.data() } as Appointment;
-          return (appointment.prescriptions || []).map(p => ({
-            ...p,
-            reminderEnabled: true, // Default state
-            appointmentId: appointment.id,
-            appointmentDate: (appointment.appointmentDate as unknown as Timestamp).toDate(),
-          }));
+          return (appointment.prescriptions || []).map(p => {
+             const medKey = `${appointment.id}-${p.medicineId}`;
+             const storedPref = typeof window !== 'undefined' ? localStorage.getItem(`reminder_${medKey}`) : null;
+             const reminderEnabled = storedPref ? JSON.parse(storedPref) : true;
+             return {
+                ...p,
+                reminderEnabled,
+                appointmentId: appointment.id,
+                appointmentDate: (appointment.appointmentDate as unknown as Timestamp).toDate(),
+             }
+          });
         });
         
         setMedications(allPrescriptions);
@@ -71,22 +79,113 @@ export default function PatientMedicationsPage() {
         setDataLoading(false);
         setPageLoading(false);
       }
-    };
-
+  }, [user, db, userProfile, toast, setPageLoading]);
+  
+  useEffect(() => {
     if (!authLoading) {
       fetchMedications();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, userProfile]);
+  }, [authLoading, fetchMedications]);
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined' && "Notification" in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+  
+  const requestNotificationAccess = () => {
+     if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          setNotificationPermission(permission);
+          if (permission !== 'granted') {
+            toast({
+              title: "Notifications Disabled",
+              description: "You won't receive medication reminders. You can enable them in your browser settings.",
+              variant: "default"
+            });
+          }
+        });
+      }
+  }
 
   const toggleReminder = (appointmentId: string, medicineId: string) => {
     setMedications(prevMeds =>
-      prevMeds.map(med =>
-        med.appointmentId === appointmentId && med.medicineId === medicineId 
-        ? { ...med, reminderEnabled: !med.reminderEnabled } : med
-      )
+      prevMeds.map(med => {
+        if (med.appointmentId === appointmentId && med.medicineId === medicineId) {
+          const newPref = !med.reminderEnabled;
+          const medKey = `${med.appointmentId}-${med.medicineId}`;
+          localStorage.setItem(`reminder_${medKey}`, JSON.stringify(newPref));
+          if(newPref && notificationPermission === 'default') requestNotificationAccess();
+          return { ...med, reminderEnabled: newPref };
+        }
+        return med;
+      })
     );
   };
+  
+  useEffect(() => {
+    scheduledTimers.current.forEach(timerId => clearTimeout(timerId));
+    scheduledTimers.current = [];
+
+    if (notificationPermission !== 'granted' || !notificationPrefs.medicationReminders) {
+      return;
+    }
+
+    const reminderTimes = {
+      morning: { hour: 8, minute: 0 },
+      afternoon: { hour: 13, minute: 0 },
+      evening: { hour: 20, minute: 0 },
+    };
+
+    const scheduleNotification = (medName: string) => {
+      new Notification('Medication Reminder', {
+        body: `It's time to take your ${medName}.`,
+        icon: '/logo.png', // Assuming a logo exists in public folder
+      });
+    };
+
+    const setDailyTimeout = (callback: () => void, hour: number, minute: number) => {
+        const schedule = () => {
+            const now = new Date();
+            const nextNotificationTime = new Date();
+            nextNotificationTime.setHours(hour, minute, 0, 0);
+
+            if (now.getTime() > nextNotificationTime.getTime()) {
+                nextNotificationTime.setDate(nextNotificationTime.getDate() + 1);
+            }
+
+            const timeoutMs = nextNotificationTime.getTime() - now.getTime();
+            
+            const timerId = setTimeout(() => {
+                callback();
+                schedule();
+            }, timeoutMs);
+            
+            scheduledTimers.current.push(timerId);
+        };
+        schedule();
+    };
+
+
+    medications.forEach(med => {
+      if (med.reminderEnabled) {
+        if (med.repetition.morning) {
+          setDailyTimeout(() => scheduleNotification(med.medicineName), reminderTimes.morning.hour, reminderTimes.morning.minute);
+        }
+        if (med.repetition.afternoon) {
+          setDailyTimeout(() => scheduleNotification(med.medicineName), reminderTimes.afternoon.hour, reminderTimes.afternoon.minute);
+        }
+        if (med.repetition.evening) {
+          setDailyTimeout(() => scheduleNotification(med.medicineName), reminderTimes.evening.hour, reminderTimes.evening.minute);
+        }
+      }
+    });
+
+    return () => {
+      scheduledTimers.current.forEach(timerId => clearTimeout(timerId));
+    };
+  }, [medications, notificationPermission, notificationPrefs.medicationReminders]);
+
 
   const MedicationCard = ({ medication }: { medication: MedicationWithContext }) => (
     <Card className="shadow-md hover:shadow-lg transition-shadow w-full">
@@ -103,9 +202,9 @@ export default function PatientMedicationsPage() {
         <div className="mb-3">
           <h4 className="font-semibold text-sm mb-1">Dosage Schedule:</h4>
           <ul className="list-none space-y-1 text-sm">
-            {medication.repetition.morning && <li className="flex justify-between items-center p-1 rounded bg-secondary/30"><span>Morning</span></li>}
-            {medication.repetition.afternoon && <li className="flex justify-between items-center p-1 rounded bg-secondary/30"><span>Afternoon</span></li>}
-            {medication.repetition.evening && <li className="flex justify-between items-center p-1 rounded bg-secondary/30"><span>Evening</span></li>}
+            {medication.repetition.morning && <li className="flex justify-between items-center p-1 rounded bg-secondary/30"><span>Morning (approx. 8:00 AM)</span></li>}
+            {medication.repetition.afternoon && <li className="flex justify-between items-center p-1 rounded bg-secondary/30"><span>Afternoon (approx. 1:00 PM)</span></li>}
+            {medication.repetition.evening && <li className="flex justify-between items-center p-1 rounded bg-secondary/30"><span>Evening (approx. 8:00 PM)</span></li>}
           </ul>
         </div>
         {medication.instructions && (
@@ -146,6 +245,21 @@ export default function PatientMedicationsPage() {
             <ListChecks className="mr-2 h-4 w-4" /> Medication Log (Coming Soon)
         </Button>
       </div>
+
+       {notificationPermission !== 'granted' && (
+        <Card className="bg-yellow-50 border-yellow-300">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BellRing className="h-6 w-6 text-yellow-700" />
+              <div>
+                <h3 className="font-semibold text-yellow-800">Enable Notifications</h3>
+                <p className="text-sm text-yellow-700">Click here to allow reminders for your medications.</p>
+              </div>
+            </div>
+            <Button onClick={requestNotificationAccess} variant="outline" size="sm">Enable</Button>
+          </CardContent>
+        </Card>
+      )}
 
       {medications.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">

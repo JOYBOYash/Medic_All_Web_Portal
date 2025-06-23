@@ -5,25 +5,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, DownloadCloud } from "lucide-react";
+import { Bell, Palette, ShieldCheck, DownloadCloud, Moon, Sun, Monitor } from "lucide-react";
 import React, { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useSettings } from "@/context/SettingsContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function PatientSettingsPage() {
   const { loading: authLoading, setPageLoading } = useAuth();
-  const [medicationReminders, setMedicationReminders] = React.useState(true);
-  const [appointmentAlerts, setAppointmentAlerts] = React.useState(true);
-  const [darkMode, setDarkMode] = React.useState(false);
+  const { theme, setTheme, notificationPrefs, setNotificationPrefs } = useSettings();
 
   useEffect(() => {
-    // This page is ready as soon as auth context is loaded.
-    // DashboardShell turns the loader on, this page turns it off.
     if (!authLoading) {
       setPageLoading(false);
     }
   }, [authLoading, setPageLoading]);
 
-  // Let DashboardShell handle the main loading UI.
   if (authLoading) {
     return null;
   }
@@ -48,8 +45,8 @@ export default function PatientSettingsPage() {
               </Label>
               <Switch
                 id="medication-reminders"
-                checked={medicationReminders}
-                onCheckedChange={setMedicationReminders}
+                checked={notificationPrefs.medicationReminders}
+                onCheckedChange={(checked) => setNotificationPrefs({ medicationReminders: checked })}
                 aria-label="Toggle medication reminders"
               />
             </div>
@@ -59,8 +56,8 @@ export default function PatientSettingsPage() {
               </Label>
               <Switch
                 id="appointment-alerts"
-                checked={appointmentAlerts}
-                onCheckedChange={setAppointmentAlerts}
+                checked={notificationPrefs.appointmentReminders}
+                onCheckedChange={(checked) => setNotificationPrefs({ appointmentReminders: checked })}
                 aria-label="Toggle appointment alerts"
               />
             </div>
@@ -70,7 +67,8 @@ export default function PatientSettingsPage() {
               </Label>
               <Switch
                 id="chat-notifications"
-                defaultChecked
+                checked={notificationPrefs.chatAlerts}
+                onCheckedChange={(checked) => setNotificationPrefs({ chatAlerts: checked })}
                 aria-label="Toggle chat message alerts"
               />
             </div>
@@ -84,24 +82,21 @@ export default function PatientSettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
              <div className="flex items-center justify-between space-x-2 p-2 rounded-lg border">
-              <Label htmlFor="dark-mode" className="font-medium">
-                Dark Mode
+              <Label htmlFor="theme-selector" className="font-medium">
+                Theme
               </Label>
-              <Switch
-                id="dark-mode"
-                checked={darkMode}
-                onCheckedChange={(checked) => {
-                  setDarkMode(checked);
-                  if (checked) {
-                    document.documentElement.classList.add('dark');
-                  } else {
-                    document.documentElement.classList.remove('dark');
-                  }
-                }}
-                aria-label="Toggle dark mode"
-              />
+               <Select value={theme} onValueChange={(value) => setTheme(value as 'light' | 'dark' | 'system')}>
+                <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Select theme" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="light"><div className="flex items-center gap-2"><Sun className="h-4 w-4"/> Light</div></SelectItem>
+                    <SelectItem value="dark"><div className="flex items-center gap-2"><Moon className="h-4 w-4"/> Dark</div></SelectItem>
+                    <SelectItem value="system"><div className="flex items-center gap-2"><Monitor className="h-4 w-4"/> System</div></SelectItem>
+                </SelectContent>
+                </Select>
             </div>
-            <p className="text-sm text-muted-foreground p-2">Font size and other display options coming soon.</p>
+            <p className="text-sm text-muted-foreground p-2">Your preferences are saved in this browser.</p>
           </CardContent>
         </Card>
         

@@ -9,6 +9,7 @@ export interface NotificationPreferences {
   appointmentReminders: boolean;
   chatAlerts: boolean;
   lowStockAlerts: boolean;
+  medicationReminders: boolean;
 }
 
 interface SettingsContextType {
@@ -32,6 +33,7 @@ const getInitialNotifPrefs = (): NotificationPreferences => {
     appointmentReminders: true,
     chatAlerts: true,
     lowStockAlerts: true,
+    medicationReminders: true,
   };
   if (typeof window !== 'undefined' && localStorage.getItem('notificationPrefs')) {
     try {
@@ -51,6 +53,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     appointmentReminders: true,
     chatAlerts: true,
     lowStockAlerts: true,
+    medicationReminders: true,
   });
 
   useEffect(() => {
