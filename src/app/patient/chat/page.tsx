@@ -7,31 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquareHeart, Send, Paperclip, UserCircle, Loader2, ChevronsUpDown } from "lucide-react";
-import Image from "next/image";
+import { Send, Paperclip, UserCircle, Loader2, ChevronsUpDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { UserProfile } from "@/types/homeoconnect";
-import { db, collection, query, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { UserProfile, ChatRoom, ChatMessage } from "@/types/homeoconnect";
+import { db, collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc, addDoc, serverTimestamp, writeBatch, PATIENTS_COLLECTION, USERS_COLLECTION, CHAT_ROOMS_COLLECTION } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-
-interface Message {
-  id: string;
-  text: string;
-  sender: "user" | "doctor" | "bot";
-  timestamp: Date;
-  avatar?: string;
-}
+import { formatDistanceToNow } from 'date-fns';
 
 export default function PatientChatPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
   
-  const [messages, setMessages] = useState<Message[]>([
-    { id: "1", text: "Welcome to Medicall Chat! Please select a doctor to begin your conversation. Note: This is a demo and messages are not sent.", sender: "bot", timestamp: new Date(), avatar: "https://avatar.vercel.sh/bot.svg" },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -39,6 +29,9 @@ export default function PatientChatPage() {
   const [doctors, setDoctors] = useState<UserProfile[]>([]);
   const [selectedDoctor, setSelectedDoctor] = useState<UserProfile | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [chatRoomId, setChatRoomId] = useState<string | null>(null);
+
 
   useEffect(() => {
     const fetchAssociatedDoctors = async () => {
@@ -80,6 +73,37 @@ export default function PatientChatPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile]);
+  
+  useEffect(() => {
+    if(user && selectedDoctor) {
+        const ids = [user.uid, selectedDoctor.id];
+        ids.sort();
+        setChatRoomId(ids.join('_'));
+    }
+  }, [user, selectedDoctor]);
+
+  useEffect(() => {
+    if (!chatRoomId) {
+        setMessages([]);
+        return;
+    };
+
+    const messagesQuery = query(
+        collection(db, CHAT_ROOMS_COLLECTION, chatRoomId, 'messages'),
+        orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(messagesQuery, (querySnapshot) => {
+        const fetchedMessages = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate()
+        } as ChatMessage));
+        setMessages(fetchedMessages);
+    });
+
+    return () => unsubscribe();
+  }, [chatRoomId]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -87,30 +111,58 @@ export default function PatientChatPage() {
     }
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputText.trim() === "" || !selectedDoctor) return;
+    if (inputText.trim() === "" || !selectedDoctor || !user || !userProfile || !chatRoomId) return;
 
-    const newMessage: Message = {
-      id: String(Date.now()),
+    setIsSending(true);
+
+    const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
+    
+    const newMsgPayload = {
       text: inputText,
-      sender: "user",
-      timestamp: new Date(),
-      avatar: userProfile?.photoURL || `https://avatar.vercel.sh/${user?.uid}.svg`,
+      senderId: user.uid,
+      timestamp: serverTimestamp(),
     };
-    setMessages([...messages, newMessage]);
-    setInputText("");
 
-    setTimeout(() => {
-      const botReply: Message = {
-        id: String(Date.now() + 1),
-        text: "Thank you for your message. This is a demo and your message has not been sent. In a real application, a doctor would review this shortly. If this is an emergency, please call your local emergency number.",
-        sender: "bot",
-        timestamp: new Date(),
-        avatar: "https://avatar.vercel.sh/bot.svg",
-      };
-      setMessages(prev => [...prev, botReply]);
-    }, 1500);
+    const lastMessageData = {
+        text: inputText,
+        senderId: user.uid,
+        timestamp: serverTimestamp(),
+    };
+
+    try {
+        const batch = writeBatch(db);
+        
+        // Add the new message to subcollection
+        const newMessageRef = doc(collection(chatRoomRef, "messages"));
+        batch.set(newMessageRef, newMsgPayload);
+
+        // Create or update the chat room document
+        batch.set(chatRoomRef, {
+            participants: [user.uid, selectedDoctor.id],
+            participantInfo: {
+                [user.uid]: {
+                    displayName: userProfile.displayName || "Patient",
+                    photoURL: userProfile.photoURL || null
+                },
+                [selectedDoctor.id]: {
+                    displayName: selectedDoctor.displayName || "Doctor",
+                    photoURL: selectedDoctor.photoURL || null
+                }
+            },
+            lastMessage: lastMessageData,
+            updatedAt: serverTimestamp(),
+        }, { merge: true });
+
+        await batch.commit();
+        setInputText("");
+    } catch(error) {
+        console.error("Error sending message:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to send message." });
+    } finally {
+        setIsSending(false);
+    }
   };
 
   if (dataLoading) {
@@ -155,7 +207,7 @@ export default function PatientChatPage() {
                                     {doctors.map((doctor) => (
                                         <CommandItem
                                             key={doctor.id}
-                                            value={doctor.id}
+                                            value={doctor.displayName || doctor.id}
                                             onSelect={() => {
                                                 setSelectedDoctor(doctor);
                                                 setPopoverOpen(false);
@@ -178,30 +230,30 @@ export default function PatientChatPage() {
               <div
                 key={msg.id}
                 className={`flex items-end gap-2 ${
-                  msg.sender === "user" ? "justify-end" : "justify-start"
+                  msg.senderId === user?.uid ? "justify-end" : "justify-start"
                 }`}
               >
-                {msg.sender !== "user" && (
+                {msg.senderId !== user?.uid && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={msg.avatar} alt={msg.sender} />
+                    <AvatarImage src={selectedDoctor?.photoURL || undefined} alt={selectedDoctor?.displayName || "Doctor"} />
                     <AvatarFallback><UserCircle size={16}/></AvatarFallback>
                   </Avatar>
                 )}
                 <div
                   className={`max-w-xs lg:max-w-md p-3 rounded-xl shadow ${
-                    msg.sender === "user"
+                    msg.senderId === user?.uid
                       ? "bg-primary text-primary-foreground rounded-br-none"
                       : "bg-card text-card-foreground rounded-bl-none border"
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                  <p className={`text-xs mt-1 ${msg.sender === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <p className={`text-xs mt-1 ${msg.senderId === user?.uid ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                    {msg.timestamp ? formatDistanceToNow(msg.timestamp, { addSuffix: true }) : 'sending...'}
                   </p>
                 </div>
-                {msg.sender === "user" && (
+                {msg.senderId === user?.uid && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={msg.avatar} alt={msg.sender} />
+                    <AvatarImage src={userProfile?.photoURL || undefined} alt={userProfile?.displayName || "User"} />
                      <AvatarFallback>{userProfile?.displayName?.charAt(0) || 'U'}</AvatarFallback>
                   </Avatar>
                 )}
@@ -223,10 +275,10 @@ export default function PatientChatPage() {
               onChange={(e) => setInputText(e.target.value)}
               className="flex-1 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
               autoComplete="off"
-              disabled={!selectedDoctor}
+              disabled={!selectedDoctor || isSending}
             />
-            <Button type="submit" size="icon" disabled={!inputText.trim() || !selectedDoctor}>
-              <Send className="h-5 w-5" />
+            <Button type="submit" size="icon" disabled={!inputText.trim() || !selectedDoctor || isSending}>
+              {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
               <span className="sr-only">Send message</span>
             </Button>
           </form>

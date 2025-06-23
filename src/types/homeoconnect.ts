@@ -78,6 +78,34 @@ export interface Appointment {
   updatedAt: Timestamp;
 }
 
+
+// CHAT-RELATED TYPES
+export interface ParticipantInfo {
+    displayName: string | null;
+    photoURL: string | null;
+}
+
+export interface ChatRoom {
+  id: string; // Composite key: patientUid_doctorUid (sorted)
+  participants: string[]; // [patientUid, doctorUid]
+  participantInfo: { [uid: string]: ParticipantInfo };
+  lastMessage?: {
+      text: string;
+      timestamp: Timestamp;
+      senderId: string;
+  };
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface ChatMessage {
+  id: string; // Firestore document ID
+  senderId: string;
+  text: string;
+  timestamp: Timestamp;
+}
+
+
 // For dropdowns
 export const painSeverityOptions: { value: PainSeverity; label: string }[] = [
   { value: 'none', label: 'None' },

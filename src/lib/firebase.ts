@@ -2,7 +2,7 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch } from 'firebase/firestore'; // Added writeBatch
+import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch, onSnapshot } from 'firebase/firestore'; // Added writeBatch and onSnapshot
 // import { getAnalytics } from "firebase/analytics"; // Optional
 
 // Your web app's Firebase configuration
@@ -73,6 +73,7 @@ export const USERS_COLLECTION = "users";
 export const PATIENTS_COLLECTION = "patients";
 export const MEDICINES_COLLECTION = "medicines";
 export const APPOINTMENTS_COLLECTION = "appointments";
+export const CHAT_ROOMS_COLLECTION = "chatRooms";
 
 export const createUserProfileDocument = async (userId: string, data: { email: string | null, role: 'doctor' | 'patient', displayName?: string | null, photoURL?: string | null }) => {
   if (!db || !userId) return; // Check if db is initialized
@@ -109,4 +110,4 @@ export const getUserProfileDocument = async (userId: string) => {
 };
 
 // Explicitly re-export Firestore functions for use in other parts of the app
-export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc as setFirestoreDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch };
+export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch, onSnapshot };
