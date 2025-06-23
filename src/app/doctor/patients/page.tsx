@@ -12,7 +12,7 @@ import Link from "next/link";
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, deleteDoc } from "@/lib/firebase";
+import { db, PATIENTS_COLLECTION, collection, query, where, getDocs, doc, updateDoc, serverTimestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 
@@ -21,7 +21,7 @@ export default function DoctorPatientsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
+  const [archivingPatientId, setArchivingPatientId] = useState<string | null>(null);
 
   const fetchPatients = useCallback(async () => {
     if (!user || !userProfile || userProfile.role !== 'doctor') return;
@@ -77,22 +77,26 @@ export default function DoctorPatientsPage() {
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
-  const handleDeletePatient = async (patientId: string, patientName: string) => {
+  const handleArchivePatient = async (patientId: string, patientName: string) => {
     if (!user || !db || userProfile?.role !== 'doctor') {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
-    if (window.confirm(`Are you sure you want to permanently delete patient "${patientName}"? This action cannot be undone.`)) {
-      setDeletingPatientId(patientId);
+    if (window.confirm(`Are you sure you want to archive patient "${patientName}"? They will be hidden from this list but their data will be preserved.`)) {
+      setArchivingPatientId(patientId);
       try {
-        await deleteDoc(doc(db, PATIENTS_COLLECTION, patientId));
-        toast({ title: "Success", description: `Patient "${patientName}" has been deleted.` });
+        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
+        await updateDoc(patientDocRef, {
+          status: 'archived',
+          updatedAt: serverTimestamp(),
+        });
+        toast({ title: "Success", description: `Patient "${patientName}" has been archived.` });
         setPatients(prev => prev.filter(p => p.id !== patientId));
       } catch (error) {
-        console.error("Error deleting patient: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
+        console.error("Error archiving patient: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to archive patient." });
       } finally {
-        setDeletingPatientId(null);
+        setArchivingPatientId(null);
       }
     }
   };
@@ -206,16 +210,16 @@ export default function DoctorPatientsPage() {
                             </Link>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => handleDeletePatient(patient.id, patient.name)} 
+                              onClick={() => handleArchivePatient(patient.id, patient.name)} 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                              disabled={deletingPatientId === patient.id}
+                              disabled={archivingPatientId === patient.id}
                             >
-                               {deletingPatientId === patient.id ? (
+                               {archivingPatientId === patient.id ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               ) : (
                                 <Trash2 className="mr-2 h-4 w-4" />
                               )}
-                              {deletingPatientId === patient.id ? 'Deleting...' : 'Delete Patient'}
+                              {archivingPatientId === patient.id ? 'Archiving...' : 'Archive Patient'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
