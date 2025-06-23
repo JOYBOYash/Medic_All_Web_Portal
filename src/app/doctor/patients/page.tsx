@@ -69,10 +69,9 @@ export default function DoctorPatientsPage() {
     if (window.confirm(`Are you sure you want to permanently delete patient "${patientName}"? This action cannot be undone.`)) {
       setDeletingPatientId(patientId);
       try {
-        const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
-        await deleteDoc(patientDocRef);
-        setPatients(prev => prev.filter(p => p.id !== patientId));
+        await deleteDoc(doc(db, PATIENTS_COLLECTION, patientId));
         toast({ title: "Success", description: `Patient "${patientName}" has been deleted.` });
+        await fetchPatients(); // Re-fetch the list to ensure UI is in sync
       } catch (error) {
         console.error("Error deleting patient: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
@@ -138,12 +137,11 @@ export default function DoctorPatientsPage() {
                     <TableRow key={patient.id} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="hidden sm:table-cell">
                         <Image 
-                          src={`https://placehold.co/40x40.png?text=${patient.name.charAt(0)}`} 
+                          src={`https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=40&auto=format&fit=crop`} 
                           alt={patient.name} 
                           width={40} 
                           height={40} 
-                          className="rounded-full"
-                          data-ai-hint="person avatar" 
+                          className="rounded-full object-cover"
                         />
                       </TableCell>
                       <TableCell className="font-medium">{patient.name}</TableCell>

@@ -120,7 +120,7 @@ export default function PatientAppointmentsPage() {
               {format(new Date(appointment.appointmentDate), "PPP 'at' p")}
             </CardTitle>
             <CardDescription className="flex items-center gap-2 pt-1">
-                <Image src={appointment.doctorPhotoURL || `https://placehold.co/24x24.png`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full" data-ai-hint="doctor avatar" />
+                <Image src={appointment.doctorPhotoURL || `https://images.unsplash.com/photo-1537368910025-700350fe46c7?q=80&w=24&auto=format&fit=crop`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full object-cover" />
                 With {appointment.doctorName || "Doctor"}
             </CardDescription>
           </div>
@@ -177,7 +177,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
-              <Image src="https://placehold.co/200x150.png" data-ai-hint="calendar empty" alt="No upcoming appointments" width={200} height={150} className="mx-auto mb-4 rounded-lg"/>
+              <Image src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=200&h=150&auto=format&fit=crop" alt="A calendar on a wall" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
               <p className="font-semibold">No upcoming appointments.</p>
               <p>Contact your clinic if you need to schedule one.</p>
             </div>
@@ -190,7 +190,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
-              <Image src="https://placehold.co/200x150.png" data-ai-hint="history empty" alt="No past appointments" width={200} height={150} className="mx-auto mb-4 rounded-lg"/>
+              <Image src="https://images.unsplash.com/photo-1615840287214-7ff58936c4cf?q=80&w=200&h=150&auto=format&fit=crop" alt="An open book representing history" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
               <p className="font-semibold">No past appointments found.</p>
               <p>Your appointment history will appear here.</p>
             </div>

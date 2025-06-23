@@ -159,7 +159,7 @@ export default function PatientDetailPage() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="flex items-center gap-3">
-            <Image src={`https://placehold.co/60x60.png?text=${patient.name.charAt(0)}`} alt={patient.name} width={60} height={60} className="rounded-full" data-ai-hint="person avatar"/>
+            <Image src={`https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=60&auto=format&fit=crop`} alt={patient.name} width={60} height={60} className="rounded-full object-cover"/>
             <div>
                 <p className="text-sm font-medium text-muted-foreground">Name</p>
                 <p className="text-lg font-semibold">{patient.name}</p>
@@ -264,7 +264,7 @@ function AppointmentsTable({ appointments, patientName, onDelete }: Appointments
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <Link href={`/doctor/appointments/new?appointmentId=${apt.id}&patientId=${apt.patientId}`}> 
+                    <Link href={`/doctor/appointments/edit/${apt.id}`}> 
                       <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View/Edit Details</DropdownMenuItem>
                     </Link>
                     <DropdownMenuSeparator />

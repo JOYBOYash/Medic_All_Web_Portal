@@ -24,7 +24,7 @@ export default function HomePage() {
     }
   }, [user, userProfile, loading, router]);
 
-  if (loading) {
+  if (loading || (!loading && user)) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-primary/30 via-background to-accent/30">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
@@ -84,9 +84,8 @@ export default function HomePage() {
                 </div>
               </div>
               <Image
-                src="https://placehold.co/600x400.png"
-                alt="Clinic"
-                data-ai-hint="clinic health"
+                src="https://images.unsplash.com/photo-1586773860414-72d262e3c393?q=80&w=600&h=400&auto=format&fit=crop"
+                alt="A modern and clean clinic interior"
                 width={600}
                 height={400}
                 className="mx-auto aspect-video overflow-hidden rounded-xl object-cover sm:w-full lg:order-last lg:aspect-square shadow-lg"
