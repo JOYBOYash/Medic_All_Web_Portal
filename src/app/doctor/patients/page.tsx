@@ -28,16 +28,21 @@ export default function DoctorPatientsPage() {
     
     setPageLoading(true);
     try {
-      // FIX: Changed query from `where("status", "!=", "archived")` to a more reliable `where("status", "==", "active")`
-      // This correctly fetches active patients and avoids issues with documents that might not have a status field.
-      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid), where("status", "==", "active"));
+      // The query now fetches all patients for the doctor, regardless of status.
+      // This is more robust against older data that may not have a 'status' field.
+      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
       const querySnapshot = await getDocs(q);
-      const fetchedPatients = querySnapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
-        updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
-      } as Patient));
+      const fetchedPatients = querySnapshot.docs
+        .map(doc => ({ 
+          id: doc.id, 
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
+          updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
+        } as Patient))
+        // We filter out archived patients on the client side.
+        // This handles cases where 'status' is undefined, treating them as active.
+        .filter(patient => patient.status !== 'archived');
+        
       setPatients(fetchedPatients);
     } catch (error: any) {
       console.error("Error fetching patients: ", error);
