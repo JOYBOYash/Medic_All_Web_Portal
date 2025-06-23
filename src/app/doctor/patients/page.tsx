@@ -28,7 +28,9 @@ export default function DoctorPatientsPage() {
     
     setPageLoading(true);
     try {
-      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid), where("status", "!=", "archived"));
+      // FIX: Changed query from `where("status", "!=", "archived")` to a more reliable `where("status", "==", "active")`
+      // This correctly fetches active patients and avoids issues with documents that might not have a status field.
+      const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid), where("status", "==", "active"));
       const querySnapshot = await getDocs(q);
       const fetchedPatients = querySnapshot.docs.map(doc => ({ 
         id: doc.id, 
@@ -37,9 +39,18 @@ export default function DoctorPatientsPage() {
         updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
       } as Patient));
       setPatients(fetchedPatients);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching patients: ", error);
-      toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
+      if (error.code === 'failed-precondition' && error.message?.toLowerCase().includes('index')) {
+        toast({
+            variant: "destructive",
+            title: "Database Index Required",
+            description: "An index is needed to view patients. Please check your Firebase console to create it.",
+            duration: 20000,
+        });
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
+      }
     } finally {
       setPageLoading(false);
     }
