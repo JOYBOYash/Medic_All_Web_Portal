@@ -11,6 +11,8 @@ import { useAuth } from "@/context/AuthContext";
 import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, orderBy, limit, Timestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useRouter } from "next/navigation";
+import { ToastAction } from "@/components/ui/toast";
 
 interface DashboardStats {
   totalPatients: number;
@@ -30,9 +32,11 @@ interface RecentPatientActivityItem {
 export default function DoctorDashboardPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [recentPatients, setRecentPatients] = useState<RecentPatientActivityItem[]>([]);
+  const [notificationShown, setNotificationShown] = useState(false);
   
   const fetchDashboardData = useCallback(async () => {
     if (!user || !db || userProfile?.role !== 'doctor') return;
@@ -124,6 +128,22 @@ export default function DoctorDashboardPage() {
       setPageLoading(false);
     }
   }, [authLoading, user, fetchDashboardData, setPageLoading]);
+
+  useEffect(() => {
+    if (dashboardStats && dashboardStats.appointmentsToday > 0 && !notificationShown) {
+      toast({
+        title: "Today's Schedule",
+        description: `You have ${dashboardStats.appointmentsToday} appointment(s) scheduled for today.`,
+        action: (
+          <ToastAction altText="View Appointments" onClick={() => router.push('/doctor/appointments')}>
+            View
+          </ToastAction>
+        ),
+        duration: 8000,
+      });
+      setNotificationShown(true);
+    }
+  }, [dashboardStats, notificationShown, toast, router]);
 
   const statsToDisplay = useMemo(() => {
     if (!dashboardStats) {

@@ -11,6 +11,8 @@ import { db, collection, query, where, getDocs, limit, orderBy, Timestamp, doc, 
 import { Appointment, PrescribedMedicine, UserProfile } from "@/types/homeoconnect";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
+import { ToastAction } from "@/components/ui/toast";
 
 interface EnrichedAppointment extends Appointment {
   doctorName?: string;
@@ -19,9 +21,11 @@ interface EnrichedAppointment extends Appointment {
 export default function PatientDashboardPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [dataLoading, setDataLoading] = useState(true); // Local content readiness
   const [upcomingAppointment, setUpcomingAppointment] = useState<EnrichedAppointment | null>(null);
   const [currentMedications, setCurrentMedications] = useState<PrescribedMedicine[]>([]);
+  const [notificationShown, setNotificationShown] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -101,6 +105,29 @@ export default function PatientDashboardPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile]);
+  
+  useEffect(() => {
+    if (upcomingAppointment && !notificationShown) {
+        const appointmentDate = upcomingAppointment.appointmentDate.toDate();
+        const today = new Date();
+        
+        const isAppointmentToday = format(appointmentDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
+
+        if (isAppointmentToday) {
+            toast({
+                title: "Appointment Reminder",
+                description: `You have an appointment with ${upcomingAppointment.doctorName} today at ${format(appointmentDate, "p")}.`,
+                action: (
+                   <ToastAction altText="View Details" onClick={() => router.push('/patient/appointments')}>
+                       View
+                   </ToastAction>
+                ),
+                duration: 8000,
+            });
+            setNotificationShown(true);
+        }
+    }
+  }, [upcomingAppointment, notificationShown, toast, router]);
 
   const quickAccessActions = [
     { label: "View Past Appointments", href: "/patient/appointments?tab=past", icon: <FileText /> },
