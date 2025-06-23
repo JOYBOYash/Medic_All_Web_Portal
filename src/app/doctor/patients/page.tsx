@@ -71,7 +71,7 @@ export default function DoctorPatientsPage() {
       try {
         await deleteDoc(doc(db, PATIENTS_COLLECTION, patientId));
         toast({ title: "Success", description: `Patient "${patientName}" has been deleted.` });
-        await fetchPatients(); // Re-fetch the list to ensure UI is in sync
+        setPatients(prev => prev.filter(p => p.id !== patientId));
       } catch (error) {
         console.error("Error deleting patient: ", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to delete patient." });
@@ -137,11 +137,12 @@ export default function DoctorPatientsPage() {
                     <TableRow key={patient.id} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="hidden sm:table-cell">
                         <Image 
-                          src={`https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=40&auto=format&fit=crop`} 
+                          src={`https://images.unsplash.com/photo-1633332755192-727a05c4013d`} 
                           alt={patient.name} 
                           width={40} 
                           height={40} 
                           className="rounded-full object-cover"
+                          data-ai-hint="profile person"
                         />
                       </TableCell>
                       <TableCell className="font-medium">{patient.name}</TableCell>

@@ -30,7 +30,7 @@ export default function PatientChatPage() {
   const { toast } = useToast();
   
   const [messages, setMessages] = useState<Message[]>([
-    { id: "1", text: "Welcome to Medicall Chat! Please select a doctor to begin your conversation. Note: This is a demo and messages are not sent.", sender: "bot", timestamp: new Date(), avatar: "https://images.unsplash.com/photo-1555952517-2e8e729e0b44?q=80&w=40&auto=format&fit=crop" },
+    { id: "1", text: "Welcome to Medicall Chat! Please select a doctor to begin your conversation. Note: This is a demo and messages are not sent.", sender: "bot", timestamp: new Date(), avatar: "https://images.unsplash.com/photo-1555952517-2e8e729e0b44" },
   ]);
   const [inputText, setInputText] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -96,7 +96,7 @@ export default function PatientChatPage() {
       text: inputText,
       sender: "user",
       timestamp: new Date(),
-      avatar: userProfile?.photoURL || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=40&auto=format&fit=crop",
+      avatar: userProfile?.photoURL || "https://images.unsplash.com/photo-1633332755192-727a05c4013d",
     };
     setMessages([...messages, newMessage]);
     setInputText("");
@@ -107,7 +107,7 @@ export default function PatientChatPage() {
         text: "Thank you for your message. This is a demo and your message has not been sent. In a real application, a doctor would review this shortly. If this is an emergency, please call your local emergency number.",
         sender: "bot",
         timestamp: new Date(),
-        avatar: "https://images.unsplash.com/photo-1555952517-2e8e729e0b44?q=80&w=40&auto=format&fit=crop",
+        avatar: "https://images.unsplash.com/photo-1555952517-2e8e729e0b44",
       };
       setMessages(prev => [...prev, botReply]);
     }, 1500);
@@ -129,7 +129,7 @@ export default function PatientChatPage() {
            <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 border">
-                        <AvatarImage src={selectedDoctor?.photoURL || "https://images.unsplash.com/photo-1537368910025-700350fe46c7?q=80&w=48&auto=format&fit=crop"} alt={selectedDoctor?.displayName || "Doctor"} />
+                        <AvatarImage src={selectedDoctor?.photoURL || "https://images.unsplash.com/photo-1537368910025-700350fe46c7"} alt={selectedDoctor?.displayName || "Doctor"} data-ai-hint="profile doctor" />
                         <AvatarFallback>{selectedDoctor?.displayName?.charAt(0) || <UserCircle />}</AvatarFallback>
                     </Avatar>
                     <div>
@@ -183,7 +183,7 @@ export default function PatientChatPage() {
               >
                 {msg.sender !== "user" && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={msg.avatar} alt={msg.sender} />
+                    <AvatarImage src={msg.avatar} alt={msg.sender} data-ai-hint="robot chat" />
                     <AvatarFallback><UserCircle size={16}/></AvatarFallback>
                   </Avatar>
                 )}
@@ -201,7 +201,7 @@ export default function PatientChatPage() {
                 </div>
                 {msg.sender === "user" && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={msg.avatar} alt={msg.sender} />
+                    <AvatarImage src={msg.avatar} alt={msg.sender} data-ai-hint="profile person" />
                      <AvatarFallback>{userProfile?.displayName?.charAt(0) || 'U'}</AvatarFallback>
                   </Avatar>
                 )}

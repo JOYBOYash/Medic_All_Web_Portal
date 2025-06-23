@@ -120,7 +120,7 @@ export default function PatientAppointmentsPage() {
               {format(new Date(appointment.appointmentDate), "PPP 'at' p")}
             </CardTitle>
             <CardDescription className="flex items-center gap-2 pt-1">
-                <Image src={appointment.doctorPhotoURL || `https://images.unsplash.com/photo-1537368910025-700350fe46c7?q=80&w=24&auto=format&fit=crop`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full object-cover" />
+                <Image src={appointment.doctorPhotoURL || `https://images.unsplash.com/photo-1537368910025-700350fe46c7`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full object-cover" data-ai-hint="profile doctor" />
                 With {appointment.doctorName || "Doctor"}
             </CardDescription>
           </div>
@@ -177,7 +177,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
-              <Image src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=200&h=150&auto=format&fit=crop" alt="A calendar on a wall" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
+              <Image src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe" alt="A calendar on a wall" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover" data-ai-hint="calendar wall"/>
               <p className="font-semibold">No upcoming appointments.</p>
               <p>Contact your clinic if you need to schedule one.</p>
             </div>
@@ -190,7 +190,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
-              <Image src="https://images.unsplash.com/photo-1615840287214-7ff58936c4cf?q=80&w=200&h=150&auto=format&fit=crop" alt="An open book representing history" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
+              <Image src="https://images.unsplash.com/photo-1615840287214-7ff58936c4cf" alt="An open book representing history" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover" data-ai-hint="open book"/>
               <p className="font-semibold">No past appointments found.</p>
               <p>Your appointment history will appear here.</p>
             </div>

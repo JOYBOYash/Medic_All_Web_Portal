@@ -39,7 +39,7 @@ function AppointmentDayCard({ title, date, appointments }: { title: string, date
                             {appointments.map(apt => (
                                 <div key={apt.id} className="flex items-center justify-between p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors">
                                     <div className="flex items-center gap-3">
-                                        <Image src={apt.patientAvatar || `https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=32&auto=format&fit=crop`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover"/>
+                                        <Image src={apt.patientAvatar || `https://images.unsplash.com/photo-1633332755192-727a05c4013d`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover" data-ai-hint="profile person"/>
                                         <div>
                                             <p className="font-semibold text-sm">{apt.patientName}</p>
                                             <p className="text-xs text-muted-foreground">{format(new Date(apt.appointmentDate), "p")}</p>
@@ -101,7 +101,7 @@ export default function DoctorAppointmentsPage() {
             updatedAt: (aptData.updatedAt as unknown as Timestamp).toDate(),
             nextAppointmentDate: aptData.nextAppointmentDate ? (aptData.nextAppointmentDate as unknown as Timestamp).toDate() : undefined,
             patientName: patient?.name || "Unknown Patient",
-            patientAvatar: `https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=40&auto=format&fit=crop`,
+            patientAvatar: `https://images.unsplash.com/photo-1633332755192-727a05c4013d`,
           } as EnrichedAppointment;
         });
         setAppointments(fetchedAppointments);
@@ -274,7 +274,7 @@ export default function DoctorAppointmentsPage() {
                             <TableCell className="font-medium hidden sm:table-cell">{format(new Date(apt.appointmentDate), "p")}</TableCell>
                             <TableCell>
                                 <div className="flex items-center gap-2">
-                                    <Image src={apt.patientAvatar || `https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=32&auto=format&fit=crop`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover"/>
+                                    <Image src={apt.patientAvatar || `https://images.unsplash.com/photo-1633332755192-727a05c4013d`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover" data-ai-hint="profile person"/>
                                     <span>{apt.patientName}</span>
                                 </div>
                             </TableCell>

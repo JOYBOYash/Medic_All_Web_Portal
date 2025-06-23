@@ -84,11 +84,12 @@ export default function HomePage() {
                 </div>
               </div>
               <Image
-                src="https://images.unsplash.com/photo-1586773860414-72d262e3c393?q=80&w=600&h=400&auto=format&fit=crop"
+                src="https://images.unsplash.com/photo-1586773860414-72d262e3c393"
                 alt="A modern and clean clinic interior"
                 width={600}
                 height={400}
                 className="mx-auto aspect-video overflow-hidden rounded-xl object-cover sm:w-full lg:order-last lg:aspect-square shadow-lg"
+                data-ai-hint="clinic interior"
               />
             </div>
           </div>
