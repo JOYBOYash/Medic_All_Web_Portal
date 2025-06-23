@@ -43,6 +43,7 @@ export interface Medicine {
   doctorId: string; // UID of the doctor who added this medicine
   name: string;
   description?: string; // e.g., potency, form (pills, liquid)
+  stock: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

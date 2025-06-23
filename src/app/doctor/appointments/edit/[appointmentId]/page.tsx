@@ -20,8 +20,9 @@ import { format as formatDateFn } from "date-fns";
 import { ArrowLeft, CalendarIcon, PlusCircle, Save, Trash2, Clock, Users, Loader2 } from "lucide-react";
 import { Appointment, Patient, Medicine, PainSeverity, painSeverityOptions, commonSymptomsOptions } from "@/types/homeoconnect";
 import { useAuth } from "@/context/AuthContext";
-import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, doc, getFirestoreDoc, updateDoc, serverTimestamp, Timestamp } from "@/lib/firebase";
+import { db, APPOINTMENTS_COLLECTION, PATIENTS_COLLECTION, MEDICINES_COLLECTION, collection, query, where, getDocs, doc, getFirestoreDoc, updateDoc, serverTimestamp, Timestamp, writeBatch } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/context/SettingsContext";
 
 
 const prescriptionSchema = z.object({
@@ -54,12 +55,15 @@ const appointmentFormSchema = z.object({
 
 type AppointmentFormValues = z.infer<typeof appointmentFormSchema>;
 
+const LOW_STOCK_THRESHOLD = 5;
+
 export default function EditAppointmentPage() {
   const router = useRouter();
   const params = useParams();
   const appointmentId = params.appointmentId as string;
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
+  const { notificationPrefs } = useSettings();
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -106,7 +110,7 @@ export default function EditAppointmentPage() {
       const appointmentDocSnap = await getFirestoreDoc(appointmentDocRef);
 
       if (appointmentDocSnap.exists() && appointmentDocSnap.data().doctorId === user.uid) {
-        const aptData = appointmentDocSnap.data() as Appointment;
+        const aptData = { id: appointmentDocSnap.id, ...appointmentDocSnap.data() } as Appointment;
         setAppointment(aptData);
         
         const appointmentDate = (aptData.appointmentDate as unknown as Timestamp).toDate();
@@ -163,7 +167,7 @@ export default function EditAppointmentPage() {
 
 
   const onSubmit = async (data: AppointmentFormValues) => {
-    if (!user || !db || !appointmentId) {
+    if (!user || !db || !appointmentId || !appointment) {
         toast({ variant: "destructive", title: "Error", description: "Cannot update appointment." });
         return;
     }
@@ -186,10 +190,38 @@ export default function EditAppointmentPage() {
       status: data.status,
       updatedAt: serverTimestamp(),
     };
-
+    
     try {
+        const batch = writeBatch(db);
         const appointmentDocRef = doc(db, APPOINTMENTS_COLLECTION, appointmentId);
-        await updateDoc(appointmentDocRef, finalData);
+        batch.update(appointmentDocRef, finalData);
+
+        // If appointment is being marked as 'completed', update medicine stock
+        if (appointment.status !== 'completed' && data.status === 'completed' && data.prescriptions) {
+          for (const p of data.prescriptions) {
+            const quantityNumber = parseInt(p.quantity, 10);
+            if (!isNaN(quantityNumber) && quantityNumber > 0) {
+              const medDocRef = doc(db, MEDICINES_COLLECTION, p.medicineId);
+              const medDoc = await getFirestoreDoc(medDocRef);
+              if (medDoc.exists()) {
+                const currentStock = medDoc.data().stock as number;
+                const newStock = Math.max(0, currentStock - quantityNumber);
+                batch.update(medDocRef, { stock: newStock });
+
+                if (notificationPrefs.lowStockAlerts && newStock <= LOW_STOCK_THRESHOLD) {
+                  toast({
+                    title: "Low Stock Warning",
+                    description: `Stock for ${p.medicineName} is now ${newStock}.`,
+                    variant: "destructive"
+                  });
+                }
+              }
+            }
+          }
+        }
+        
+        await batch.commit();
+
         toast({ title: "Success", description: "Appointment updated successfully." });
         router.push(appointment?.patientId ? `/doctor/patients/${appointment.patientId}` : "/doctor/appointments");
     } catch (error) {
@@ -224,6 +256,7 @@ export default function EditAppointmentPage() {
             <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="font-headline">Appointment Status</CardTitle>
+                    <CardDescription>Update status to 'Completed' to finalize and update medicine stock.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <FormField
@@ -387,7 +420,7 @@ export default function EditAppointmentPage() {
                         >
                           <FormControl><SelectTrigger><SelectValue placeholder="Select medicine" /></SelectTrigger></FormControl>
                           <SelectContent>
-                            {medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} ({med.description || 'No description'})</SelectItem>)}
+                            {medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} (Stock: {med.stock})</SelectItem>)}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -399,8 +432,9 @@ export default function EditAppointmentPage() {
                     name={`prescriptions.${index}.quantity`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantity/Dosage</FormLabel>
-                        <FormControl><Input placeholder="e.g., 5 pills, 1 teaspoon" {...field} /></FormControl>
+                        <FormLabel>Quantity/Dosage (numeric)</FormLabel>
+                        <FormControl><Input type="number" placeholder="e.g., 5" {...field} /></FormControl>
+                         <FormDescription>Enter a number. Units will be assumed (e.g. pills, drops).</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

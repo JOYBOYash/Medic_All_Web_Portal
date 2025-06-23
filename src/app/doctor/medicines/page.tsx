@@ -19,11 +19,13 @@ import { useAuth } from "@/context/AuthContext";
 import { db, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation"; 
+import { cn } from "@/lib/utils";
 
 const medicineFormSchema = z.object({
   id: z.string().optional(), 
   name: z.string().min(2, { message: "Medicine name must be at least 2 characters." }),
   description: z.string().optional(),
+  stock: z.coerce.number().min(0, "Stock cannot be negative."),
 });
 
 type MedicineFormValues = z.infer<typeof medicineFormSchema>;
@@ -45,6 +47,7 @@ export default function DoctorMedicinesPage() {
     defaultValues: {
       name: "",
       description: "",
+      stock: 0,
     },
   });
 
@@ -80,9 +83,10 @@ export default function DoctorMedicinesPage() {
         id: editingMedicine.id,
         name: editingMedicine.name,
         description: editingMedicine.description || "",
+        stock: editingMedicine.stock || 0,
       });
     } else {
-      form.reset({ name: "", description: "" });
+      form.reset({ name: "", description: "", stock: 0 });
     }
   }, [editingMedicine, form, isDialogOpen]);
 
@@ -134,7 +138,7 @@ export default function DoctorMedicinesPage() {
         toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
         return;
     }
-    if (confirm("Are you sure you want to delete this medicine?")) {
+    if (confirm("Are you sure you want to delete this medicine? This action cannot be undone.")) {
       try {
         await deleteDoc(doc(db, MEDICINES_COLLECTION, medicineId));
         setMedicines(prev => prev.filter(m => m.id !== medicineId));
@@ -148,7 +152,7 @@ export default function DoctorMedicinesPage() {
   
   const openNewMedicineDialog = () => {
     setEditingMedicine(null);
-    form.reset({ name: "", description: "" }); 
+    form.reset({ name: "", description: "", stock: 0 }); 
     setIsDialogOpen(true);
   };
 
@@ -168,7 +172,7 @@ export default function DoctorMedicinesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold font-headline tracking-tight text-primary-foreground_dark">Medicine Database</h1>
-          <p className="text-muted-foreground">Manage the list of available medicines for prescriptions.</p>
+          <p className="text-muted-foreground">Manage the list of available medicines and their stock.</p>
         </div>
         <Button onClick={openNewMedicineDialog}>
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Medicine
@@ -200,6 +204,7 @@ export default function DoctorMedicinesPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Description / Potency / Form</TableHead>
+                    <TableHead>Stock</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -208,6 +213,13 @@ export default function DoctorMedicinesPage() {
                     <TableRow key={medicine.id} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="font-medium">{medicine.name}</TableCell>
                       <TableCell className="max-w-md truncate" title={medicine.description}>{medicine.description || "N/A"}</TableCell>
+                      <TableCell className={cn(
+                        "font-semibold",
+                        medicine.stock < 10 && "text-destructive",
+                        medicine.stock >= 10 && medicine.stock < 20 && "text-yellow-600"
+                      )}>
+                        {medicine.stock}
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -252,14 +264,14 @@ export default function DoctorMedicinesPage() {
         setIsDialogOpen(open);
         if (!open) {
           setEditingMedicine(null); 
-          form.reset({ name: "", description: "" });
+          form.reset({ name: "", description: "", stock: 0 });
         }
       }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="font-headline">{editingMedicine ? "Edit Medicine" : "Add New Medicine"}</DialogTitle>
             <DialogDescription>
-              {editingMedicine ? "Update the details of this medicine." : "Enter the details for the new medicine."}
+              {editingMedicine ? "Update the details and stock of this medicine." : "Enter the details for the new medicine."}
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -285,6 +297,19 @@ export default function DoctorMedicinesPage() {
                     <FormLabel>Description (Potency, Form, etc.)</FormLabel>
                     <FormControl>
                       <Textarea placeholder="e.g., 30C, For bruises and muscle soreness" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="stock"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Stock Quantity</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="e.g., 100" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

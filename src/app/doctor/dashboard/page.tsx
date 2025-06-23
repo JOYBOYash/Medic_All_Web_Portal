@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { ToastAction } from "@/components/ui/toast";
+import { useSettings } from "@/context/SettingsContext";
 
 interface DashboardStats {
   totalPatients: number;
@@ -33,6 +34,7 @@ export default function DoctorDashboardPage() {
   const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  const { notificationPrefs } = useSettings();
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [recentPatients, setRecentPatients] = useState<RecentPatientActivityItem[]>([]);
@@ -130,7 +132,7 @@ export default function DoctorDashboardPage() {
   }, [authLoading, user, fetchDashboardData, setPageLoading]);
 
   useEffect(() => {
-    if (dashboardStats && dashboardStats.appointmentsToday > 0 && !notificationShown) {
+    if (dashboardStats && dashboardStats.appointmentsToday > 0 && !notificationShown && notificationPrefs.appointmentReminders) {
       toast({
         title: "Today's Schedule",
         description: `You have ${dashboardStats.appointmentsToday} appointment(s) scheduled for today.`,
@@ -143,7 +145,7 @@ export default function DoctorDashboardPage() {
       });
       setNotificationShown(true);
     }
-  }, [dashboardStats, notificationShown, toast, router]);
+  }, [dashboardStats, notificationShown, toast, router, notificationPrefs.appointmentReminders]);
 
   const statsToDisplay = useMemo(() => {
     if (!dashboardStats) {
