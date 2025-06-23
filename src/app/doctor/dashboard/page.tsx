@@ -94,7 +94,7 @@ export default function DoctorDashboardPage() {
           id: docSnap.id,
           name: patientData.name,
           activity: `Registered on ${format(createdAtDate, "PP")}`,
-          img: `https://picsum.photos/seed/${docSnap.id}/40/40`,
+          img: `https://avatar.vercel.sh/${docSnap.id}.svg`,
           createdAt: createdAtDate
         };
       }) as RecentPatientActivityItem[];

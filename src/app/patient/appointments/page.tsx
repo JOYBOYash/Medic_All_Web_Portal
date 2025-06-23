@@ -82,7 +82,7 @@ export default function PatientAppointmentsPage() {
             id: docSnap.id,
             appointmentDate: (aptData.appointmentDate as unknown as Timestamp).toDate(),
             doctorName: doctor?.displayName || "Unknown Doctor",
-            doctorPhotoURL: doctor?.photoURL || `https://picsum.photos/seed/${aptData.doctorId}/40/40`,
+            doctorPhotoURL: doctor?.photoURL || `https://avatar.vercel.sh/${aptData.doctorId}.svg`,
           } as EnrichedAppointment;
         });
 
@@ -120,7 +120,7 @@ export default function PatientAppointmentsPage() {
               {format(new Date(appointment.appointmentDate), "PPP 'at' p")}
             </CardTitle>
             <CardDescription className="flex items-center gap-2 pt-1">
-                <Image src={appointment.doctorPhotoURL || `https://picsum.photos/seed/${appointment.doctorId}/24/24`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full object-cover"/>
+                <Image src={appointment.doctorPhotoURL || `https://avatar.vercel.sh/${appointment.doctorId}.svg`} alt={appointment.doctorName || "Doctor"} width={24} height={24} className="rounded-full object-cover"/>
                 With {appointment.doctorName || "Doctor"}
             </CardDescription>
           </div>
@@ -177,7 +177,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
-              <Image src="https://picsum.photos/seed/calendar/200/150" alt="A calendar on a wall" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
+              <Image src="https://images.unsplash.com/photo-1506784983877-45594efa4cbe" data-ai-hint="calendar schedule" alt="A calendar on a wall" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
               <p className="font-semibold">No upcoming appointments.</p>
               <p>Contact your clinic if you need to schedule one.</p>
             </div>
@@ -190,7 +190,7 @@ export default function PatientAppointmentsPage() {
             </div>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
-              <Image src="https://picsum.photos/seed/history/200/150" alt="An open book representing history" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
+              <Image src="https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8" data-ai-hint="history book" alt="An open book representing history" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
               <p className="font-semibold">No past appointments found.</p>
               <p>Your appointment history will appear here.</p>
             </div>

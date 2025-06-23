@@ -154,7 +154,7 @@ export default function PatientMedicationsPage() {
       ) : (
         <Card className="text-center py-10 shadow-md">
             <CardContent className="text-muted-foreground">
-                <Image src="https://picsum.photos/seed/meds/200/150" alt="Empty pharmacy shelves" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
+                <Image src="https://images.unsplash.com/photo-1584308666744-24d5c474f2ae" data-ai-hint="medication pharmacy" alt="Assorted medication pills" width={200} height={150} className="mx-auto mb-4 rounded-lg object-cover"/>
                 <p className="font-semibold">No medications found in your history.</p>
                 <p>Your prescribed medications will appear here after a consultation.</p>
             </CardContent>

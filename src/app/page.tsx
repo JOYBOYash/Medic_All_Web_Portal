@@ -84,11 +84,12 @@ export default function HomePage() {
                 </div>
               </div>
               <Image
-                src="https://picsum.photos/seed/clinic/600/400"
-                alt="A modern and clean clinic interior"
+                src="https://images.unsplash.com/photo-1576091160550-2173dba999ef"
+                alt="A doctor uses a tablet to consult with a patient"
                 width={600}
                 height={400}
                 className="mx-auto aspect-video overflow-hidden rounded-xl object-cover sm:w-full lg:order-last lg:aspect-square shadow-lg"
+                data-ai-hint="doctor healthcare"
               />
             </div>
           </div>

@@ -150,11 +150,12 @@ export default function PatientProfilePage() {
         <CardContent>
           <div className="flex flex-col items-center mb-6">
             <Image
-              src={userProfile.photoURL || `https://picsum.photos/seed/${user?.uid}/150/150`}
+              src={userProfile.photoURL || "https://images.unsplash.com/photo-1550835527-2b5114a2a42a"}
               alt={userProfile.displayName || "Patient"}
               width={150}
               height={150}
               className="rounded-full border-4 border-primary shadow-md mb-4 object-cover"
+              data-ai-hint="patient portrait"
             />
           </div>
           <Form {...form}>

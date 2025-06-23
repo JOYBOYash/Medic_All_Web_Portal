@@ -30,7 +30,7 @@ export default function PatientChatPage() {
   const { toast } = useToast();
   
   const [messages, setMessages] = useState<Message[]>([
-    { id: "1", text: "Welcome to Medicall Chat! Please select a doctor to begin your conversation. Note: This is a demo and messages are not sent.", sender: "bot", timestamp: new Date(), avatar: "https://picsum.photos/seed/bot/40/40" },
+    { id: "1", text: "Welcome to Medicall Chat! Please select a doctor to begin your conversation. Note: This is a demo and messages are not sent.", sender: "bot", timestamp: new Date(), avatar: "https://avatar.vercel.sh/bot.svg" },
   ]);
   const [inputText, setInputText] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -96,7 +96,7 @@ export default function PatientChatPage() {
       text: inputText,
       sender: "user",
       timestamp: new Date(),
-      avatar: userProfile?.photoURL || `https://picsum.photos/seed/${user?.uid}/40/40`,
+      avatar: userProfile?.photoURL || `https://avatar.vercel.sh/${user?.uid}.svg`,
     };
     setMessages([...messages, newMessage]);
     setInputText("");
@@ -107,7 +107,7 @@ export default function PatientChatPage() {
         text: "Thank you for your message. This is a demo and your message has not been sent. In a real application, a doctor would review this shortly. If this is an emergency, please call your local emergency number.",
         sender: "bot",
         timestamp: new Date(),
-        avatar: "https://picsum.photos/seed/bot/40/40",
+        avatar: "https://avatar.vercel.sh/bot.svg",
       };
       setMessages(prev => [...prev, botReply]);
     }, 1500);
@@ -129,7 +129,7 @@ export default function PatientChatPage() {
            <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 border">
-                        <AvatarImage src={selectedDoctor?.photoURL || `https://picsum.photos/seed/${selectedDoctor?.id}/40/40`} alt={selectedDoctor?.displayName || "Doctor"} />
+                        <AvatarImage src={selectedDoctor?.photoURL || `https://avatar.vercel.sh/${selectedDoctor?.id}.svg`} alt={selectedDoctor?.displayName || "Doctor"} />
                         <AvatarFallback>{selectedDoctor?.displayName?.charAt(0) || <UserCircle />}</AvatarFallback>
                     </Avatar>
                     <div>

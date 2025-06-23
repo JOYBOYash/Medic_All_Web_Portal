@@ -44,65 +44,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
 
+  const logoutHandler = useCallback(async ({ suppressRedirect = false } = {}) => {
+    setIsPageLoading(true);
+    await signOut(auth);
+    if (!suppressRedirect) {
+      router.push('/login');
+    }
+  }, [router]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-        if (firebaseUser) {
-            // If we have the profile for this UID already, no need to re-process.
-            if (userProfile && userProfile.id === firebaseUser.uid) {
-                setLoading(false);
-                setIsPageLoading(false);
-                return;
-            }
+      if (firebaseUser) {
+        const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
 
-            const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-
-            const fetchAndSetProfile = async () => {
-                const userDocSnap = await getDoc(userDocRef);
-                if (userDocSnap.exists()) {
-                    const profile = { id: userDocSnap.id, ...userDocSnap.data() } as UserProfile;
-                    setUser(firebaseUser);
-                    setUserProfile(profile);
-                    return true;
-                }
-                return false;
-            };
-
-            try {
-                const profileExists = await fetchAndSetProfile();
-
-                if (!profileExists) {
-                    const creationTime = firebaseUser.metadata.creationTime ? new Date(firebaseUser.metadata.creationTime).getTime() : 0;
-                    const lastSignInTime = firebaseUser.metadata.lastSignInTime ? new Date(firebaseUser.metadata.lastSignInTime).getTime() : 0;
-                    const isNewUser = Math.abs(lastSignInTime - creationTime) < 5000; // 5-second window for new user
-
-                    if (isNewUser) {
-                        setTimeout(async () => {
-                            const profileExistsOnRetry = await fetchAndSetProfile();
-                            if (!profileExistsOnRetry) {
-                                console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found on retry. Logging out.`);
-                                await signOut(auth);
-                            }
-                        }, 2500); // Increased retry delay
-                    } else {
-                        console.error(`CRITICAL: Existing user profile for ${firebaseUser.uid} not found. Logging out.`);
-                        await signOut(auth);
-                    }
-                }
-            } catch (e) {
-                console.error("Error processing auth state change:", e);
-                await signOut(auth);
-            }
+        if (userDocSnap.exists()) {
+          const profile = { id: userDocSnap.id, ...userDocSnap.data() } as UserProfile;
+          setUser(firebaseUser);
+          setUserProfile(profile);
         } else {
-            setUser(null);
-            setUserProfile(null);
+          // This logic handles the delay between user creation and Firestore document creation
+          const creationTime = new Date(firebaseUser.metadata.creationTime || 0).getTime();
+          const now = new Date().getTime();
+          const isNewUser = (now - creationTime) < 5000; // 5 seconds threshold
+
+          if (isNewUser) {
+            // It's a new user, let's wait a moment and retry
+            setTimeout(async () => {
+              const retrySnap = await getDoc(userDocRef);
+              if (retrySnap.exists()) {
+                const profile = { id: retrySnap.id, ...retrySnap.data() } as UserProfile;
+                setUser(firebaseUser);
+                setUserProfile(profile);
+              } else {
+                console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found after retry. Logging out.`);
+                await logoutHandler({ suppressRedirect: true });
+              }
+            }, 2500);
+          } else {
+            // This is likely an existing user with a missing profile, which is a critical error.
+            console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found. Logging out.`);
+            await logoutHandler({ suppressRedirect: true });
+          }
         }
-        setLoading(false);
-        setIsPageLoading(false);
+      } else {
+        setUser(null);
+        setUserProfile(null);
+      }
+      setLoading(false);
+      setIsPageLoading(false);
     });
 
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [logoutHandler]);
   
   useEffect(() => {
     if (loading) return;
@@ -158,7 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         email: firebaseUser.email,
         role,
         displayName: displayName || (role === 'doctor' ? 'Dr. New User' : 'New Patient'),
-        photoURL: firebaseUser.photoURL || null, 
+        photoURL: `https://avatar.vercel.sh/${firebaseUser.uid}.svg`, 
         contactNumber: "",
         address: "",
       };
@@ -171,7 +165,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: serverTimestamp(),
       });
       
-      // onAuthStateChanged will now reliably find this document and handle state updates.
+      // Manually set the profile to avoid race condition with onAuthStateChanged
+      setUserProfile({
+        id: firebaseUser.uid,
+        ...newUserProfile,
+        createdAt: new Date(), // Approximate timestamp
+        updatedAt: new Date(),
+      } as UserProfile);
+      setUser(firebaseUser);
+
       return { success: true, user: firebaseUser };
 
     } catch (error: any) {
@@ -183,16 +185,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: false, error: errorMessage, errorCode: error.code };
     }
   };
-  
-  const logoutHandler = useCallback(async ({ suppressRedirect = false } = {}) => {
-    setIsPageLoading(true);
-    await signOut(auth);
-    // onAuthStateChanged clears state. The route protection useEffect handles the redirect.
-    if (!suppressRedirect) {
-      router.push('/login');
-    }
-    // No finally block needed for setIsPageLoading(false) because onAuthStateChanged handles it.
-  }, [router]);
 
   const refreshUserProfile = async () => {
     if (user) {

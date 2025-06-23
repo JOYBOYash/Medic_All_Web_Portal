@@ -137,7 +137,7 @@ export default function DoctorPatientsPage() {
                     <TableRow key={patient.id} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="hidden sm:table-cell">
                         <Image 
-                          src={`https://picsum.photos/seed/${patient.id}/40/40`} 
+                          src={`https://avatar.vercel.sh/${patient.id}.svg`} 
                           alt={patient.name} 
                           width={40} 
                           height={40} 

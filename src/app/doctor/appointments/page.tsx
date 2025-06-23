@@ -39,7 +39,7 @@ function AppointmentDayCard({ title, date, appointments }: { title: string, date
                             {appointments.map(apt => (
                                 <div key={apt.id} className="flex items-center justify-between p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors">
                                     <div className="flex items-center gap-3">
-                                        <Image src={apt.patientAvatar || `https://picsum.photos/seed/default/32/32`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover"/>
+                                        <Image src={apt.patientAvatar || `https://avatar.vercel.sh/default.svg`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover"/>
                                         <div>
                                             <p className="font-semibold text-sm">{apt.patientName}</p>
                                             <p className="text-xs text-muted-foreground">{format(new Date(apt.appointmentDate), "p")}</p>
@@ -101,7 +101,7 @@ export default function DoctorAppointmentsPage() {
             updatedAt: (aptData.updatedAt as unknown as Timestamp).toDate(),
             nextAppointmentDate: aptData.nextAppointmentDate ? (aptData.nextAppointmentDate as unknown as Timestamp).toDate() : undefined,
             patientName: patient?.name || "Unknown Patient",
-            patientAvatar: `https://picsum.photos/seed/${aptData.patientId}/40/40`,
+            patientAvatar: `https://avatar.vercel.sh/${aptData.patientId}.svg`,
           } as EnrichedAppointment;
         });
         setAppointments(fetchedAppointments);
@@ -274,7 +274,7 @@ export default function DoctorAppointmentsPage() {
                             <TableCell className="font-medium hidden sm:table-cell">{format(new Date(apt.appointmentDate), "p")}</TableCell>
                             <TableCell>
                                 <div className="flex items-center gap-2">
-                                    <Image src={apt.patientAvatar || `https://picsum.photos/seed/${apt.patientId}/32/32`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover"/>
+                                    <Image src={apt.patientAvatar || `https://avatar.vercel.sh/${apt.patientId}.svg`} alt={apt.patientName} width={32} height={32} className="rounded-full object-cover"/>
                                     <span>{apt.patientName}</span>
                                 </div>
                             </TableCell>
