@@ -137,12 +137,11 @@ export default function DoctorPatientsPage() {
                     <TableRow key={patient.id} className="hover:bg-muted/50 transition-colors">
                       <TableCell className="hidden sm:table-cell">
                         <Image 
-                          src={`https://images.unsplash.com/photo-1633332755192-727a05c4013d`} 
+                          src={`https://picsum.photos/seed/${patient.id}/40/40`} 
                           alt={patient.name} 
                           width={40} 
                           height={40} 
                           className="rounded-full object-cover"
-                          data-ai-hint="profile person"
                         />
                       </TableCell>
                       <TableCell className="font-medium">{patient.name}</TableCell>

@@ -159,7 +159,7 @@ export default function PatientDetailPage() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="flex items-center gap-3">
-            <Image src={`https://images.unsplash.com/photo-1633332755192-727a05c4013d`} alt={patient.name} width={60} height={60} className="rounded-full object-cover" data-ai-hint="profile person"/>
+            <Image src={`https://picsum.photos/seed/${patient.id}/60/60`} alt={patient.name} width={60} height={60} className="rounded-full object-cover"/>
             <div>
                 <p className="text-sm font-medium text-muted-foreground">Name</p>
                 <p className="text-lg font-semibold">{patient.name}</p>

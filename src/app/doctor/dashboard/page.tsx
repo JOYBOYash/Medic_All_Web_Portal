@@ -94,7 +94,7 @@ export default function DoctorDashboardPage() {
           id: docSnap.id,
           name: patientData.name,
           activity: `Registered on ${format(createdAtDate, "PP")}`,
-          img: `https://images.unsplash.com/photo-1633332755192-727a05c4013d`,
+          img: `https://picsum.photos/seed/${docSnap.id}/40/40`,
           createdAt: createdAtDate
         };
       }) as RecentPatientActivityItem[];
@@ -211,7 +211,7 @@ export default function DoctorDashboardPage() {
             ) : recentPatients.length > 0 ? (
               recentPatients.map(item => (
                 <div key={item.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                  <Image src={item.img} alt={item.name} width={40} height={40} className="rounded-full object-cover" data-ai-hint="profile person"/>
+                  <Image src={item.img} alt={item.name} width={40} height={40} className="rounded-full object-cover"/>
                   <div>
                     <p className="text-sm font-medium">{item.name}</p>
                     <p className="text-xs text-muted-foreground">{item.activity}</p>
