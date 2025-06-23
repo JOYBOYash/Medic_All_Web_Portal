@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db, collection, query, where, onSnapshot, orderBy, doc, setDoc, addDoc, serverTimestamp, writeBatch, CHAT_ROOMS_COLLECTION } from "@/lib/firebase";
+import { db, collection, query, where, onSnapshot, orderBy, doc, setDoc, addDoc, serverTimestamp, writeBatch, getDoc, updateDoc, increment, CHAT_ROOMS_COLLECTION } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import type { ChatRoom, ChatMessage, UserProfile } from "@/types/homeoconnect";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -48,6 +48,13 @@ export default function DoctorChatPage() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const rooms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatRoom));
       setChatRooms(rooms);
+      // If a room is selected, update its state from the new snapshot
+      if (selectedRoom) {
+        const updatedSelectedRoom = rooms.find(r => r.id === selectedRoom.id);
+        if (updatedSelectedRoom) {
+          setSelectedRoom(updatedSelectedRoom);
+        }
+      }
       setDataLoading(false);
       setPageLoading(false);
     }, (error) => {
@@ -59,7 +66,7 @@ export default function DoctorChatPage() {
 
     return () => unsubscribe();
 
-  }, [user, userProfile, authLoading, toast, setPageLoading]);
+  }, [user, userProfile, authLoading, toast, setPageLoading, selectedRoom]);
   
   useEffect(() => {
     if (!selectedRoom?.id) {
@@ -85,6 +92,17 @@ export default function DoctorChatPage() {
 
   }, [selectedRoom]);
 
+  // Mark messages as read when a room is selected
+  useEffect(() => {
+    if (selectedRoom?.id && user && (selectedRoom.unreadCounts?.[user.uid] || 0) > 0) {
+      const roomRef = doc(db, CHAT_ROOMS_COLLECTION, selectedRoom.id);
+      updateDoc(roomRef, {
+          [`unreadCounts.${user.uid}`]: 0
+      }).catch(err => console.error("Failed to mark chat as read", err));
+    }
+  }, [selectedRoom, user]);
+
+
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
@@ -93,11 +111,18 @@ export default function DoctorChatPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputText.trim() === "" || !selectedRoom || !user) return;
+    if (inputText.trim() === "" || !selectedRoom || !user || !userProfile) return;
 
     setIsSending(true);
+    
+    const recipientId = selectedRoom.participants.find(p => p !== user.uid);
+    if (!recipientId) {
+        toast({ variant: "destructive", title: "Error", description: "Recipient not found." });
+        setIsSending(false);
+        return;
+    }
+
     const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, selectedRoom.id);
-    const messagesColRef = collection(chatRoomRef, "messages");
     
     const newMsgPayload = {
         text: inputText,
@@ -113,9 +138,15 @@ export default function DoctorChatPage() {
 
     try {
         const batch = writeBatch(db);
-        const newMessageRef = doc(collection(db, CHAT_ROOMS_COLLECTION, selectedRoom.id, "messages"));
+        const newMessageRef = doc(collection(chatRoomRef, "messages"));
         batch.set(newMessageRef, newMsgPayload);
-        batch.update(chatRoomRef, { lastMessage: lastMessageData, updatedAt: serverTimestamp() });
+
+        batch.update(chatRoomRef, { 
+            lastMessage: lastMessageData, 
+            updatedAt: serverTimestamp(),
+            [`unreadCounts.${recipientId}`]: increment(1)
+        });
+
         await batch.commit();
         setInputText("");
     } catch (error) {
@@ -160,6 +191,7 @@ export default function DoctorChatPage() {
             <ScrollArea className="flex-1">
                 {chatRooms.length > 0 ? chatRooms.map(room => {
                     const patientInfo = getParticipantInfo(room, user?.uid || '');
+                    const unreadCount = room.unreadCounts?.[user?.uid || ''] || 0;
                     return (
                         <div key={room.id}
                             onClick={() => setSelectedRoom(room)}
@@ -173,10 +205,17 @@ export default function DoctorChatPage() {
                                 <AvatarFallback><UserCircle /></AvatarFallback>
                             </Avatar>
                             <div className="flex-1 truncate">
-                                <p className="font-semibold">{patientInfo.name}</p>
+                                <p className={cn("font-semibold", unreadCount > 0 && "font-bold")}>{patientInfo.name}</p>
                                 <p className="text-xs text-muted-foreground truncate">{room.lastMessage?.text || "No messages yet."}</p>
                             </div>
-                            {room.updatedAt && <p className="text-xs text-muted-foreground self-start">{formatDistanceToNow(room.updatedAt.toDate(), { addSuffix: true })}</p>}
+                            <div className="flex flex-col items-end self-start">
+                                {room.updatedAt && <p className="text-xs text-muted-foreground">{formatDistanceToNow(room.updatedAt.toDate(), { addSuffix: true })}</p>}
+                                {unreadCount > 0 && (
+                                    <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs font-medium text-destructive-foreground">
+                                        {unreadCount > 9 ? '9+' : unreadCount}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     );
                 }) : (

@@ -2,7 +2,7 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch, onSnapshot } from 'firebase/firestore'; // Added writeBatch and onSnapshot
+import { getFirestore, Firestore, collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch, onSnapshot, increment } from 'firebase/firestore'; // Added writeBatch and onSnapshot
 // import { getAnalytics } from "firebase/analytics"; // Optional
 
 // Your web app's Firebase configuration
@@ -110,4 +110,4 @@ export const getUserProfileDocument = async (userId: string) => {
 };
 
 // Explicitly re-export Firestore functions for use in other parts of the app
-export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch, onSnapshot };
+export { collection, addDoc, getDocs, query, where, doc, getDoc as getFirestoreDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, orderBy, limit, writeBatch, onSnapshot, increment };

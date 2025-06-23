@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Paperclip, UserCircle, Loader2, ChevronsUpDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { UserProfile, ChatRoom, ChatMessage } from "@/types/homeoconnect";
-import { db, collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc, addDoc, serverTimestamp, writeBatch, PATIENTS_COLLECTION, USERS_COLLECTION, CHAT_ROOMS_COLLECTION } from "@/lib/firebase";
+import { db, collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc, addDoc, serverTimestamp, writeBatch, PATIENTS_COLLECTION, USERS_COLLECTION, CHAT_ROOMS_COLLECTION, getFirestoreDoc, increment, updateDoc } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -31,6 +31,7 @@ export default function PatientChatPage() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [chatRoomId, setChatRoomId] = useState<string | null>(null);
+  const [chatRoom, setChatRoom] = useState<ChatRoom | null>(null);
 
 
   useEffect(() => {
@@ -88,12 +89,20 @@ export default function PatientChatPage() {
         return;
     };
 
+    // Listen for room changes (for unread count)
+    const roomUnsubscribe = onSnapshot(doc(db, CHAT_ROOMS_COLLECTION, chatRoomId), (doc) => {
+        if (doc.exists()) {
+            setChatRoom(doc.data() as ChatRoom);
+        }
+    });
+
+    // Listen for messages
     const messagesQuery = query(
         collection(db, CHAT_ROOMS_COLLECTION, chatRoomId, 'messages'),
         orderBy('timestamp', 'asc')
     );
 
-    const unsubscribe = onSnapshot(messagesQuery, (querySnapshot) => {
+    const messagesUnsubscribe = onSnapshot(messagesQuery, (querySnapshot) => {
         const fetchedMessages = querySnapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
@@ -102,8 +111,22 @@ export default function PatientChatPage() {
         setMessages(fetchedMessages);
     });
 
-    return () => unsubscribe();
+    return () => {
+        roomUnsubscribe();
+        messagesUnsubscribe();
+    };
   }, [chatRoomId]);
+
+   // Mark messages as read when the chat is open
+  useEffect(() => {
+    if (chatRoomId && user && (chatRoom?.unreadCounts?.[user.uid] || 0) > 0) {
+      const roomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
+      updateDoc(roomRef, {
+          [`unreadCounts.${user.uid}`]: 0
+      }).catch(err => console.error("Failed to mark patient chat as read", err));
+    }
+  }, [chatRoom, chatRoomId, user, messages]); // Re-run if messages change
+
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -117,46 +140,55 @@ export default function PatientChatPage() {
 
     setIsSending(true);
 
-    const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
-    
+    const recipientId = selectedDoctor.id;
+    const senderId = user.uid;
+
     const newMsgPayload = {
       text: inputText,
-      senderId: user.uid,
+      senderId: senderId,
       timestamp: serverTimestamp(),
     };
 
     const lastMessageData = {
         text: inputText,
-        senderId: user.uid,
+        senderId: senderId,
         timestamp: serverTimestamp(),
     };
+    
+    const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
 
     try {
+        const docSnap = await getFirestoreDoc(chatRoomRef);
         const batch = writeBatch(db);
         
-        // Add the new message to subcollection
         const newMessageRef = doc(collection(chatRoomRef, "messages"));
         batch.set(newMessageRef, newMsgPayload);
 
-        // Create or update the chat room document
-        batch.set(chatRoomRef, {
-            participants: [user.uid, selectedDoctor.id],
-            participantInfo: {
-                [user.uid]: {
-                    displayName: userProfile.displayName || "Patient",
-                    photoURL: userProfile.photoURL || null
+        if (docSnap.exists()) {
+            batch.update(chatRoomRef, {
+                lastMessage: lastMessageData,
+                updatedAt: serverTimestamp(),
+                [`unreadCounts.${recipientId}`]: increment(1),
+            });
+        } else {
+            batch.set(chatRoomRef, {
+                participants: [senderId, recipientId],
+                participantInfo: {
+                    [senderId]: { displayName: userProfile.displayName, photoURL: userProfile.photoURL },
+                    [recipientId]: { displayName: selectedDoctor.displayName, photoURL: selectedDoctor.photoURL }
                 },
-                [selectedDoctor.id]: {
-                    displayName: selectedDoctor.displayName || "Doctor",
-                    photoURL: selectedDoctor.photoURL || null
-                }
-            },
-            lastMessage: lastMessageData,
-            updatedAt: serverTimestamp(),
-        }, { merge: true });
-
+                lastMessage: lastMessageData,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                unreadCounts: {
+                    [senderId]: 0,
+                    [recipientId]: 1,
+                },
+            });
+        }
         await batch.commit();
         setInputText("");
+
     } catch(error) {
         console.error("Error sending message:", error);
         toast({ variant: "destructive", title: "Error", description: "Failed to send message." });

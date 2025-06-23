@@ -33,6 +33,7 @@ export interface NavItem {
   disabled?: boolean;
   external?: boolean;
   label?: string;
+  badge?: string;
   submenu?: NavItem[];
 }
 
@@ -93,6 +94,11 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                           <Link href={item.href}>
                             {item.icon}
                             <span className="truncate">{item.title}</span>
+                             {item.badge && (
+                              <span className="ml-auto flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-destructive p-1 text-xs font-medium text-destructive-foreground">
+                                {Number(item.badge) > 99 ? '99+' : item.badge}
+                              </span>
+                            )}
                           </Link>
                         </SidebarMenuButton>
                     ) : (
@@ -104,6 +110,11 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                         >
                           {item.icon}
                           <span className="truncate">{item.title}</span>
+                           {item.badge && (
+                              <span className="ml-auto flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-destructive p-1 text-xs font-medium text-destructive-foreground">
+                                {Number(item.badge) > 99 ? '99+' : item.badge}
+                              </span>
+                            )}
                         </SidebarMenuButton>
                         <SidebarMenuSub>
                           {item.submenu.map(subItem => (
@@ -158,5 +169,3 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
     </SidebarProvider>
   );
 }
-    
-    

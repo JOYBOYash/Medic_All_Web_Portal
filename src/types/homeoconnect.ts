@@ -94,6 +94,7 @@ export interface ChatRoom {
       timestamp: Timestamp;
       senderId: string;
   };
+  unreadCounts?: { [uid: string]: number };
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
