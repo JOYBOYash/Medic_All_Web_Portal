@@ -1,70 +1,87 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
+    // --- Original Rules (Restored) ---
 
-    function isDoctor() {
-      // Check the user's role document. This is secure but costs 1 read per check.
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor';
-    }
-
-    // USERS Collection
-    // Any signed-in user can read profiles (for names/avatars in chat/appointments).
-    // Users can only write to their own profile.
+    // Users can read and write their own profile document
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      // Note: User creation is handled by signup logic, not direct writes.
     }
 
-    // PATIENTS Collection
-    // Doctors manage their patients. Patients read their own linked records.
+    // Doctors can manage their own patient records.
+    // Patients can read their own records if their account is linked.
     match /patients/{patientId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.doctorId || request.auth.uid == resource.data.authUid);
-      allow create: if isDoctor() && request.resource.data.doctorId == request.auth.uid;
-      allow update, delete: if isDoctor() && resource.data.doctorId == request.auth.uid;
-    }
-
-    // MEDICINES Collection
-    // Only the doctor who created a medicine can manage it.
-    match /medicines/{medicineId} {
-      allow read, update, delete: if isDoctor() && resource.data.doctorId == request.auth.uid;
-      allow create: if isDoctor() && request.resource.data.doctorId == request.auth.uid;
-    }
-    
-    // APPOINTMENTS Collection
-    // Doctors manage appointments. Patients can read their own.
-    match /appointments/{appointmentId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.doctorId || get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.authUid == request.auth.uid);
-      allow create, update, delete: if isDoctor() && (resource.data.doctorId == request.auth.uid || request.resource.data.doctorId == request.auth.uid);
-    }
-
-    // CHATROOMS Collection
-    // Chat room ID is a composite of two sorted UIDs: '{uid1}_{uid2}'
-    match /chatRooms/{roomId} {
-      // To read/update a room, user must be a participant.
-      allow read, update: if isSignedIn() && request.auth.uid in resource.data.participants;
-      // To create a room, user must be in the new participants list, and participants must match the ID.
-      allow create: if isSignedIn() && 
-                     request.auth.uid in request.resource.data.participants &&
-                     request.resource.data.participants.size() == 2 &&
-                     roomId == request.resource.data.participants[0] + '_' + request.resource.data.participants[1];
-      allow delete: if false; // Do not allow deleting chat rooms for now.
-
-      // MESSAGES SUBCOLLECTION
-      match /messages/{messageId} {
-        // To read/create messages, user's UID must be part of the parent room's ID.
-        // This avoids a 'get' call which fails if the parent doc doesn't exist yet.
-        allow read, create: if isSignedIn() && request.auth.uid in roomId.split('_');
-        
-        // Don't allow message edits/deletes.
-        allow update, delete: if false;
+      function isDoctorOwner() {
+        // On read/update/delete, check existing document
+        return request.auth.token.role == 'doctor' && request.auth.uid == get(/databases/$(database)/documents/patients/$(patientId)).data.doctorId;
       }
+      function isCreator() {
+        // On create, check incoming document
+        return request.auth.token.role == 'doctor' && request.auth.uid == request.resource.data.doctorId;
+      }
+      function isPatientLinked() {
+         return request.auth.token.role == 'patient' && request.auth.uid == resource.data.authUid;
+      }
+
+      allow create: if isCreator();
+      allow read, update, delete: if isDoctorOwner();
+      allow read: if isPatientLinked(); // Additive read permission for patients
+    }
+
+    // Doctors can manage the medicines they add to their database.
+    match /medicines/{medicineId} {
+       function isDoctorOwner() {
+        return request.auth.token.role == 'doctor' && request.auth.uid == get(/databases/$(database)/documents/medicines/$(medicineId)).data.doctorId;
+      }
+      allow create: if request.auth.token.role == 'doctor' && request.auth.uid == request.resource.data.doctorId;
+      allow read, update, delete: if isDoctorOwner();
+    }
+
+    // Doctors manage their appointments. Patients can read their own appointments.
+    match /appointments/{appointmentId} {
+      function isDoctorOwner() {
+         return request.auth.token.role == 'doctor' && request.auth.uid == get(/databases/$(database)/documents/appointments/$(appointmentId)).data.doctorId;
+      }
+      function isPatientLinked() {
+        let patientId = get(/databases/$(database)/documents/appointments/$(appointmentId)).data.patientId;
+        let patientRecord = get(/databases/$(database)/documents/patients/$(patientId)).data;
+        return request.auth.token.role == 'patient' && request.auth.uid == patientRecord.authUid;
+      }
+
+      allow create: if request.auth.token.role == 'doctor' && request.auth.uid == request.resource.data.doctorId;
+      allow read, update, delete: if isDoctorOwner();
+      allow read: if isPatientLinked(); // Additive read permission for patients
+    }
+
+    // --- New Chat Rules ---
+
+    // A Chat Room document can be read/updated by its participants.
+    // Creation is handled implicitly when the first message is sent.
+    match /chatRooms/{roomId} {
+      function isParticipant() {
+        return request.auth.uid in resource.data.participants;
+      }
+
+      allow get, update: if request.auth != null && isParticipant();
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.participants;
+    }
+
+    // Messages can be read or created by participants of the chat room.
+    match /chatRooms/{roomId}/messages/{messageId} {
+      function isParticipantByRoomId() {
+        // The roomId is a composite key of `uid1_uid2`. This checks if the user's uid is in that key.
+        return request.auth.uid in roomId.split('_');
+      }
+
+      // This rule is key: It allows creating/reading messages without needing to
+      // read the parent chatRoom doc, which might not exist yet.
+      allow read, create: if request.auth != null && isParticipantByRoomId();
+      
+      // For data integrity, prevent updating or deleting messages.
+      allow update, delete: if false;
     }
   }
 }
