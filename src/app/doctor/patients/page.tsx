@@ -1,11 +1,12 @@
 
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Patient } from "@/types/homeoconnect";
 import { MoreHorizontal, PlusCircle, Search, User, Edit, Trash2, FileText, Loader2, Link as LinkIcon, Link2Off } from "lucide-react";
 import Link from "next/link";
@@ -15,6 +16,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION, CHAT_ROOMS_COLLECTION, collection, query, where, getDocs, doc, writeBatch } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export default function DoctorPatientsPage() {
   const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
@@ -22,14 +24,15 @@ export default function DoctorPatientsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
+  
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
 
   const fetchPatients = useCallback(async () => {
     if (!user || !userProfile || userProfile.role !== 'doctor') return;
     
     setPageLoading(true);
     try {
-      // The query now fetches all patients for the doctor, regardless of status.
-      // This is more robust against older data that may not have a 'status' field.
       const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
       const querySnapshot = await getDocs(q);
       const fetchedPatients = querySnapshot.docs
@@ -39,8 +42,6 @@ export default function DoctorPatientsPage() {
           createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
           updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
         } as Patient))
-        // We filter out archived patients on the client side.
-        // This handles cases where 'status' is undefined, treating them as active.
         .filter(patient => patient.status !== 'archived');
         
       setPatients(fetchedPatients);
@@ -77,55 +78,57 @@ export default function DoctorPatientsPage() {
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [patients, searchTerm]);
 
-  const handleRemovePatient = async (patient: Patient) => {
-    if (!user || !db || userProfile?.role !== 'doctor') {
-        toast({ variant: "destructive", title: "Unauthorized", description: "You are not authorized." });
-        return;
+  const handleOpenDeleteDialog = (patient: Patient) => {
+    setPatientToDelete(patient);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const handleRemovePatient = async () => {
+    if (!patientToDelete || !user || !db || userProfile?.role !== 'doctor') {
+      toast({ variant: "destructive", title: "Error", description: "An unexpected error occurred. Please try again." });
+      setPatientToDelete(null);
+      setIsDeleteAlertOpen(false);
+      return;
     }
-    if (window.confirm(`Are you sure you want to REMOVE patient "${patient.name}" from your clinic? This will delete all their appointments and chat history with you, but will NOT delete their main Medicall account.`)) {
-      setDeletingPatientId(patient.id);
-      try {
-        const batch = writeBatch(db);
+    
+    const patientToRemove = patientToDelete;
+    setDeletingPatientId(patientToRemove.id);
+    setIsDeleteAlertOpen(false);
 
-        // 1. Delete all appointments for this patient-doctor link
-        const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "==", patient.id), where("doctorId", "==", user.uid));
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-        appointmentsSnapshot.forEach(doc => {
-          batch.delete(doc.ref);
-        });
+    try {
+      const batch = writeBatch(db);
 
-        // 2. Delete the chat room and all its messages, if a linked account exists
-        if (patient.authUid) {
-            const ids = [user.uid, patient.authUid];
-            ids.sort();
-            const chatRoomId = ids.join('_');
-            const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
+      const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "==", patientToRemove.id), where("doctorId", "==", user.uid));
+      const appointmentsSnapshot = await getDocs(appointmentsQuery);
+      appointmentsSnapshot.forEach(doc => batch.delete(doc.ref));
 
-            // Delete messages subcollection
-            const messagesQuery = query(collection(chatRoomRef, "messages"));
-            const messagesSnapshot = await getDocs(messagesQuery);
-            messagesSnapshot.forEach(doc => {
-                batch.delete(doc.ref);
-            });
+      if (patientToRemove.authUid) {
+          const ids = [user.uid, patientToRemove.authUid];
+          ids.sort();
+          const chatRoomId = ids.join('_');
+          const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
+          
+          const messagesQuery = query(collection(chatRoomRef, "messages"));
+          const messagesSnapshot = await getDocs(messagesQuery);
+          messagesSnapshot.forEach(doc => batch.delete(doc.ref));
 
-            // Delete chat room document
-            batch.delete(chatRoomRef);
-        }
-
-        // 3. Delete the patient document that links the user to the doctor
-        const patientDocRef = doc(db, PATIENTS_COLLECTION, patient.id);
-        batch.delete(patientDocRef);
-
-        await batch.commit();
-        
-        toast({ title: "Success", description: `Patient "${patient.name}" and all associated data have been removed from your clinic.` });
-        setPatients(prev => prev.filter(p => p.id !== patient.id));
-      } catch (error) {
-        console.error("Error removing patient record: ", error);
-        toast({ variant: "destructive", title: "Error", description: "Failed to remove patient. Please check permissions and try again." });
-      } finally {
-        setDeletingPatientId(null);
+          batch.delete(chatRoomRef);
       }
+
+      const patientDocRef = doc(db, PATIENTS_COLLECTION, patientToRemove.id);
+      batch.delete(patientDocRef);
+
+      await batch.commit();
+      
+      toast({ title: "Success", description: `Patient "${patientToRemove.name}" and all associated data have been removed from your clinic.` });
+      setPatients(prev => prev.filter(p => p.id !== patientToRemove.id));
+
+    } catch (error) {
+      console.error("Error removing patient record: ", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to remove patient. Please check permissions and try again." });
+    } finally {
+      setDeletingPatientId(null);
+      setPatientToDelete(null);
     }
   };
   
@@ -211,7 +214,7 @@ export default function DoctorPatientsPage() {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
+                            <Button variant="ghost" className="h-8 w-8 p-0" disabled={deletingPatientId === patient.id}>
                               <span className="sr-only">Open menu</span>
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
@@ -238,7 +241,7 @@ export default function DoctorPatientsPage() {
                             </Link>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem 
-                              onClick={() => handleRemovePatient(patient)} 
+                              onClick={() => handleOpenDeleteDialog(patient)} 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10"
                               disabled={deletingPatientId === patient.id}
                             >
@@ -273,6 +276,29 @@ export default function DoctorPatientsPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently remove the patient "{patientToDelete?.name}" and all of their associated appointments and chat history from your clinic. Their main Medicall account will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPatientToDelete(null)} disabled={!!deletingPatientId}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleRemovePatient} 
+              className={cn(buttonVariants({ variant: "destructive" }))}
+              disabled={!!deletingPatientId}
+            >
+              {deletingPatientId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {deletingPatientId ? 'Removing...' : 'Continue'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
