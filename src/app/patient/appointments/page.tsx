@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ interface EnrichedAppointment extends Appointment {
   doctorPhotoURL?: string | null;
 }
 
-export default function PatientAppointmentsPage() {
+function PatientAppointmentsContent() {
   const { user, userProfile, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") === "past" ? "past" : "upcoming";
@@ -43,16 +43,23 @@ export default function PatientAppointmentsPage() {
 
         if (patientSnapshot.empty) {
           toast({ title: "No Linked Record", description: "No patient record from a clinic is linked to your account." });
+          setDataLoading(false);
           return;
         }
 
         const patientIds = patientSnapshot.docs.map(d => d.id);
-        if (patientIds.length === 0) return;
+        if (patientIds.length === 0) {
+          setDataLoading(false);
+          return;
+        }
         
         const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "in", patientIds));
         const appointmentsSnapshot = await getDocs(appointmentsQuery);
 
-        if (appointmentsSnapshot.empty) return;
+        if (appointmentsSnapshot.empty) {
+            setDataLoading(false);
+            return;
+        }
 
         const doctorIds = [...new Set(appointmentsSnapshot.docs.map(d => d.data().doctorId as string))];
         const doctorsMap = new Map<string, UserProfile>();
@@ -200,4 +207,16 @@ export default function PatientAppointmentsPage() {
       </Tabs>
     </div>
   );
+}
+
+export default function PatientAppointmentsPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-full w-full items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        }>
+            <PatientAppointmentsContent />
+        </Suspense>
+    );
 }
