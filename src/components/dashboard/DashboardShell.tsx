@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   SidebarProvider,
   Sidebar,
@@ -46,24 +46,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
-  const { user, userProfile, loading: authContextLoading, logout } = useAuth();
-
-  if (authContextLoading || !user || !userProfile) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
-  if (userProfile.role !== userRole) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-2">Verifying role...</p>
-      </div>
-    );
-  }
+  const { logout } = useAuth();
 
   return (
     <SidebarProvider defaultOpen className="bg-muted/40">
@@ -80,7 +63,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
                     {!item.submenu ? (
                         <SidebarMenuButton
                           asChild 
-                          isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href))}
+                          isActive={pathname === item.href || (item.href !== `/${userRole}/dashboard` && pathname.startsWith(item.href) && item.href.split('/').length > 2)}
                           tooltip={item.title}
                           className="w-full justify-start"
                         >

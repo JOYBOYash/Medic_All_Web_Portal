@@ -39,14 +39,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
 
-  const logoutHandler = useCallback(async ({ suppressRedirect = false } = {}) => {
+  const logoutHandler = useCallback(async () => {
     setLoading(true);
     await signOut(auth);
-    if (!suppressRedirect) {
-      router.push('/login');
-    }
+    setUser(null);
+    setUserProfile(null);
+    router.push('/login');
+    setLoading(false);
   }, [router]);
 
   useEffect(() => {
@@ -54,38 +54,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(true);
       if (firebaseUser) {
         const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-
-        if (userDocSnap.exists()) {
-          const profile = { id: userDocSnap.id, ...userDocSnap.data() } as UserProfile;
-          setUser(firebaseUser);
-          setUserProfile(profile);
-        } else {
-          // This logic handles the delay between user creation and Firestore document creation
-          const creationTime = new Date(firebaseUser.metadata.creationTime || 0).getTime();
-          const now = new Date().getTime();
-          const isNewUser = (now - creationTime) < 5000; // 5 seconds threshold
-
-          if (isNewUser) {
-            // It's a new user, let's wait a moment and retry
-            setTimeout(async () => {
-              const retrySnap = await getDoc(userDocRef);
-              if (retrySnap.exists()) {
-                const profile = { id: retrySnap.id, ...retrySnap.data() } as UserProfile;
-                setUser(firebaseUser);
-                setUserProfile(profile);
-              } else {
-                console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found after retry. Logging out.`);
-                await logoutHandler({ suppressRedirect: true });
-              }
-              setLoading(false);
-            }, 2500);
-            return; // Exit early to wait for timeout
+        try {
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const profile = { id: userDocSnap.id, ...userDocSnap.data() } as UserProfile;
+            setUser(firebaseUser);
+            setUserProfile(profile);
           } else {
-            // This is likely an existing user with a missing profile, which is a critical error.
-            console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found. Logging out.`);
-            await logoutHandler({ suppressRedirect: true });
+            // Handle case where user exists in Auth but not Firestore
+            // This might happen on first signup if Firestore write is delayed
+            console.warn(`User profile for ${firebaseUser.uid} not found. Attempting to sign out.`);
+            await logoutHandler();
           }
+        } catch (error) {
+           console.error("Error fetching user profile:", error);
+           await logoutHandler();
         }
       } else {
         setUser(null);
@@ -100,29 +83,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (loading) return;
 
-    const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/';
-    const isDoctorRoute = pathname.startsWith('/doctor');
-    const isPatientRoute = pathname.startsWith('/patient');
+    const isAuthPage = ['/login', '/signup', '/'].includes(usePathname());
 
-    if (user && userProfile) {
-      if (isAuthPage) {
-        const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
-        router.replace(destination);
-      } else {
-        const isCorrectDoctorRoute = isDoctorRoute && userProfile.role === 'doctor';
-        const isCorrectPatientRoute = isPatientRoute && userProfile.role === 'patient';
-        if ((isDoctorRoute || isPatientRoute) && !isCorrectDoctorRoute && !isCorrectPatientRoute) {
-          toast({ variant: "destructive", title: "Access Denied", description: "Incorrect role for this dashboard." });
-          logoutHandler({ suppressRedirect: true }); 
-        }
-      }
-    } else {
-      if (isDoctorRoute || isPatientRoute) {
-        router.replace('/login');
-      }
+    if (user && userProfile && isAuthPage) {
+      const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
+      router.replace(destination);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userProfile, loading, pathname]);
+  }, [user, userProfile, loading, router]);
 
   const login = async (email: string, password: string): Promise<LoginResult> => {
     setLoading(true);
@@ -164,15 +131,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: serverTimestamp(),
       });
       
-      // Manually set the profile to avoid race condition with onAuthStateChanged
-      setUserProfile({
-        id: firebaseUser.uid,
-        ...newUserProfile,
-        createdAt: new Date(), // Approximate timestamp
-        updatedAt: new Date(),
-      } as UserProfile);
-      setUser(firebaseUser);
-
+      // onAuthStateChanged will pick up the new user and their profile.
       return { success: true, user: firebaseUser };
 
     } catch (error: any) {
@@ -187,11 +146,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshUserProfile = async () => {
     if (user) {
+        setLoading(true);
         const userDocRef = doc(db, USERS_COLLECTION, user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
             setUserProfile({ id: userDocSnap.id, ...userDocSnap.data() } as UserProfile);
         }
+        setLoading(false);
     }
   };
 
