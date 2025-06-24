@@ -13,7 +13,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { LogIn, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -24,7 +24,7 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname(); // Get current pathname
@@ -209,4 +209,22 @@ function AuthCard({ role, form, onSubmit, isSubmitting }: AuthCardProps) {
         </CardFooter>
       </Card>
   )
+}
+
+function LoginPageSkeleton() {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
+            <AppLogo />
+            <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+            <p className="mt-2 text-lg text-primary-foreground_dark">Loading Page...</p>
+        </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={<LoginPageSkeleton />}>
+            <LoginContent />
+        </Suspense>
+    );
 }
