@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ const prescriptionSchema = z.object({
 const appointmentFormSchema = z.object({
   patientId: z.string().min(1, "Patient is required."),
   appointmentDate: z.date({ required_error: "Appointment date is required." }),
-  appointmentTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
+  appointmentTime: z.string().regex(/^([01]\d|2[0-2]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
   patientRemarks: z.string().optional(),
   doctorNotes: z.string().optional(),
   painSeverity: z.enum(["none", "mild", "moderate", "severe", "excruciating"]).optional(),
@@ -84,6 +84,20 @@ export default function NewAppointmentPage() {
     control: form.control,
     name: "prescriptions",
   });
+  
+  const watchedPrescriptions = form.watch("prescriptions");
+
+  const totalPrescribedQuantities = useMemo(() => {
+    const quantities = new Map<string, number>();
+    (watchedPrescriptions || []).forEach(p => {
+        if (p.medicineId && p.quantity) {
+            const currentQuantity = quantities.get(p.medicineId) || 0;
+            const newQuantity = parseInt(String(p.quantity), 10) || 0;
+            quantities.set(p.medicineId, currentQuantity + newQuantity);
+        }
+    });
+    return quantities;
+  }, [watchedPrescriptions]);
 
   const fetchData = useCallback(async () => {
     if (!user || !db || userProfile?.role !== 'doctor') return;
@@ -334,7 +348,12 @@ export default function NewAppointmentPage() {
           <Card className="shadow-lg">
             <CardHeader><CardTitle className="font-headline">Prescriptions</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {fields.map((item, index) => (
+              {fields.map((item, index) => {
+                const currentPrescription = watchedPrescriptions?.[index];
+                const currentMedId = currentPrescription?.medicineId;
+                const currentQuantity = parseInt(String(currentPrescription?.quantity || '0'), 10);
+
+                return (
                 <div key={item.id} className="p-4 border rounded-md space-y-4 relative">
                    <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive hover:bg-destructive/10" onClick={() => remove(index)}>
                         <Trash2 className="h-4 w-4" />
@@ -356,7 +375,17 @@ export default function NewAppointmentPage() {
                           <FormControl><SelectTrigger><SelectValue placeholder={medicines.length === 0 ? "No medicines found" : "Select medicine"} /></SelectTrigger></FormControl>
                           <SelectContent>
                             {medicines.length > 0 ?
-                                medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} ({med.description || 'No description'})</SelectItem>) :
+                                medicines.map(med => {
+                                    const totalPrescribed = totalPrescribedQuantities.get(med.id) || 0;
+                                    const adjustment = (med.id === currentMedId) ? currentQuantity : 0;
+                                    const displayStock = med.stock - totalPrescribed + adjustment;
+
+                                    return (
+                                        <SelectItem key={med.id} value={med.id} disabled={displayStock <= 0 && med.id !== currentMedId}>
+                                            {med.name} (Stock: {displayStock})
+                                        </SelectItem>
+                                    )
+                                }) :
                                 <div className="px-2 py-1.5 text-sm text-muted-foreground">No medicines available</div>
                             }
                           </SelectContent>
@@ -370,8 +399,9 @@ export default function NewAppointmentPage() {
                     name={`prescriptions.${index}.quantity`}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantity/Dosage</FormLabel>
-                        <FormControl><Input placeholder="e.g., 5 pills, 1 teaspoon" {...field} /></FormControl>
+                        <FormLabel>Quantity/Dosage (numeric)</FormLabel>
+                        <FormControl><Input type="number" placeholder="e.g., 5" {...field} /></FormControl>
+                        <FormDescription>Enter a number. Units will be assumed (e.g. pills, drops).</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -407,7 +437,7 @@ export default function NewAppointmentPage() {
                     )}
                   />
                 </div>
-              ))}
+              )})}
               <Button
                 type="button"
                 variant="outline"
@@ -476,3 +506,5 @@ export default function NewAppointmentPage() {
     </div>
   );
 }
+
+    

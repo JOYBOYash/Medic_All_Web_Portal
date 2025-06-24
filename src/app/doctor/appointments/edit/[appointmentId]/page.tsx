@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -91,6 +91,20 @@ export default function EditAppointmentPage() {
     control: form.control,
     name: "prescriptions",
   });
+  
+  const watchedPrescriptions = form.watch("prescriptions");
+
+  const totalPrescribedQuantities = useMemo(() => {
+    const quantities = new Map<string, number>();
+    (watchedPrescriptions || []).forEach(p => {
+        if (p.medicineId && p.quantity) {
+            const currentQuantity = quantities.get(p.medicineId) || 0;
+            const newQuantity = parseInt(String(p.quantity), 10) || 0;
+            quantities.set(p.medicineId, currentQuantity + newQuantity);
+        }
+    });
+    return quantities;
+  }, [watchedPrescriptions]);
 
   const fetchAppointmentData = useCallback(async () => {
     if (!user || !db || !appointmentId || userProfile?.role !== 'doctor') return;
@@ -402,78 +416,93 @@ export default function EditAppointmentPage() {
           <Card className="shadow-lg">
             <CardHeader><CardTitle className="font-headline">Prescriptions</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {fields.map((item, index) => (
-                <div key={item.id} className="p-4 border rounded-md space-y-4 relative">
-                   <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive hover:bg-destructive/10" onClick={() => remove(index)}>
-                        <Trash2 className="h-4 w-4" />
-                  </Button>
-                  <FormField
-                    control={form.control}
-                    name={`prescriptions.${index}.medicineId`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Medicine</FormLabel>
-                        <Select
-                          onValueChange={(value) => {
-                            const selectedMed = medicines.find(m => m.id === value);
-                            field.onChange(value);
-                            form.setValue(`prescriptions.${index}.medicineName`, selectedMed?.name || "");
-                          }}
-                          value={field.value}
-                        >
-                          <FormControl><SelectTrigger><SelectValue placeholder="Select medicine" /></SelectTrigger></FormControl>
-                          <SelectContent>
-                            {medicines.map(med => <SelectItem key={med.id} value={med.id}>{med.name} (Stock: {med.stock})</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name={`prescriptions.${index}.quantity`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Quantity/Dosage (numeric)</FormLabel>
-                        <FormControl><Input type="number" placeholder="e.g., 5" {...field} /></FormControl>
-                         <FormDescription>Enter a number. Units will be assumed (e.g. pills, drops).</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormItem>
-                    <FormLabel>Repetition</FormLabel>
-                    <div className="flex items-center space-x-4">
-                      {['morning', 'afternoon', 'evening'].map(time => (
-                        <FormField
-                          key={time}
-                          control={form.control}
-                          name={`prescriptions.${index}.repetition.${time as 'morning' | 'afternoon' | 'evening'}`}
-                          render={({ field }) => (
-                            <FormItem className="flex items-center space-x-2">
-                              <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                              <FormLabel className="font-normal capitalize">{time}</FormLabel>
-                            </FormItem>
-                          )}
-                        />
-                      ))}
+              {fields.map((item, index) => {
+                 const currentPrescription = watchedPrescriptions?.[index];
+                 const currentMedId = currentPrescription?.medicineId;
+                 const currentQuantity = parseInt(String(currentPrescription?.quantity || '0'), 10);
+
+                 return (
+                    <div key={item.id} className="p-4 border rounded-md space-y-4 relative">
+                    <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive hover:bg-destructive/10" onClick={() => remove(index)}>
+                            <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <FormField
+                        control={form.control}
+                        name={`prescriptions.${index}.medicineId`}
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Medicine</FormLabel>
+                            <Select
+                            onValueChange={(value) => {
+                                const selectedMed = medicines.find(m => m.id === value);
+                                field.onChange(value);
+                                form.setValue(`prescriptions.${index}.medicineName`, selectedMed?.name || "");
+                            }}
+                            value={field.value}
+                            >
+                            <FormControl><SelectTrigger><SelectValue placeholder="Select medicine" /></SelectTrigger></FormControl>
+                            <SelectContent>
+                                {medicines.map(med => {
+                                    const totalPrescribed = totalPrescribedQuantities.get(med.id) || 0;
+                                    const adjustment = (med.id === currentMedId) ? currentQuantity : 0;
+                                    const displayStock = med.stock - totalPrescribed + adjustment;
+                                    
+                                    return (
+                                        <SelectItem key={med.id} value={med.id} disabled={displayStock <= 0 && med.id !== currentMedId}>
+                                            {med.name} (Stock: {displayStock})
+                                        </SelectItem>
+                                    );
+                                })}
+                            </SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name={`prescriptions.${index}.quantity`}
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Quantity/Dosage (numeric)</FormLabel>
+                            <FormControl><Input type="number" placeholder="e.g., 5" {...field} /></FormControl>
+                            <FormDescription>Enter a number. Units will be assumed (e.g. pills, drops).</FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <FormItem>
+                        <FormLabel>Repetition</FormLabel>
+                        <div className="flex items-center space-x-4">
+                        {['morning', 'afternoon', 'evening'].map(time => (
+                            <FormField
+                            key={time}
+                            control={form.control}
+                            name={`prescriptions.${index}.repetition.${time as 'morning' | 'afternoon' | 'evening'}`}
+                            render={({ field }) => (
+                                <FormItem className="flex items-center space-x-2">
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                <FormLabel className="font-normal capitalize">{time}</FormLabel>
+                                </FormItem>
+                            )}
+                            />
+                        ))}
+                        </div>
+                        <FormMessage>{(form.formState.errors.prescriptions?.[index]?.repetition as any)?.message}</FormMessage>
+                    </FormItem>
+                    <FormField
+                        control={form.control}
+                        name={`prescriptions.${index}.instructions`}
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Instructions (Optional)</FormLabel>
+                            <FormControl><Input placeholder="e.g., with food, before sleep" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
                     </div>
-                     <FormMessage>{(form.formState.errors.prescriptions?.[index]?.repetition as any)?.message}</FormMessage>
-                  </FormItem>
-                  <FormField
-                    control={form.control}
-                    name={`prescriptions.${index}.instructions`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Instructions (Optional)</FormLabel>
-                        <FormControl><Input placeholder="e.g., with food, before sleep" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              ))}
+                )})}
               <Button type="button" variant="outline" onClick={() => append({ medicineId: "", medicineName: "", quantity: "", repetition: { morning: false, afternoon: false, evening: false }, instructions: "" })}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Prescription
               </Button>
@@ -534,3 +563,5 @@ export default function EditAppointmentPage() {
     </div>
   );
 }
+
+    
