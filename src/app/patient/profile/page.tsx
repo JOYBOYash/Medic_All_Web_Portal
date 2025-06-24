@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { UserProfile, Patient, ClinicDetails } from "@/types/homeoconnect";
+import { UserProfile, Patient } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -16,6 +16,8 @@ import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db, doc, updateDoc, serverTimestamp, query, collection, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 const patientProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short"),
@@ -29,11 +31,21 @@ interface ClinicRecord extends Patient {
     doctorName: string;
 }
 
+const patientAvatarOptions = [
+    { name: 'Avatar 1', url: 'https://avatar.vercel.sh/pat-a.svg' },
+    { name: 'Avatar 2', url: 'https://avatar.vercel.sh/pat-b.svg' },
+    { name: 'Avatar 3', url: 'https://avatar.vercel.sh/pat-c.svg' },
+    { name: 'Avatar 4', url: 'https://avatar.vercel.sh/pat-d.svg' },
+    { name: 'Avatar 5', url: 'https://avatar.vercel.sh/pat-e.svg' },
+    { name: 'Avatar 6', url: 'https://avatar.vercel.sh/pat-f.svg' },
+];
+
 export default function PatientProfilePage() {
   const { user, userProfile, loading: authLoading, refreshUserProfile } = useAuth();
   const { toast } = useToast();
   const [clinicRecords, setClinicRecords] = useState<ClinicRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [selectedAvatar, setSelectedAvatar] = useState(userProfile?.photoURL || "");
 
   const form = useForm<PatientProfileFormValues>({
     resolver: zodResolver(patientProfileSchema),
@@ -50,6 +62,7 @@ export default function PatientProfilePage() {
       contactNumber: profile.contactNumber || "",
       address: profile.address || "",
     });
+    setSelectedAvatar(profile.photoURL || "");
   }, [form]);
 
   useEffect(() => {
@@ -61,7 +74,6 @@ export default function PatientProfilePage() {
       setDataLoading(true);
 
       try {
-        // Fetch all patient records (clinic-specific) linked to this user
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
         const patientSnapshot = await getDocs(patientQuery);
         
@@ -70,25 +82,27 @@ export default function PatientProfilePage() {
           fetchedClinicRecords = patientSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Patient));
         }
 
-        // Get unique doctor IDs to fetch their names
         const doctorIds = [...new Set(fetchedClinicRecords.map(rec => rec.doctorId))];
         const doctorsMap = new Map<string, string>();
         if (doctorIds.length > 0) {
-            // Firestore 'in' queries are limited to 10 items for web sdk, chunk if necessary.
-            // For now, assuming less than 10 doctors per patient. If more, chunking is needed.
-            const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", doctorIds));
-            const doctorsSnapshot = await getDocs(doctorsQuery);
-            doctorsSnapshot.forEach(d => doctorsMap.set(d.id, d.data().displayName || "Unknown Doctor"));
+            const doctorChunks: string[][] = [];
+            for (let i = 0; i < doctorIds.length; i += 30) {
+                doctorChunks.push(doctorIds.slice(i, i + 30));
+            }
+            
+            for (const chunk of doctorChunks) {
+                 const doctorsQuery = query(collection(db, USERS_COLLECTION), where("id", "in", chunk));
+                 const doctorsSnapshot = await getDocs(doctorsQuery);
+                 doctorsSnapshot.forEach(d => doctorsMap.set(d.id, d.data().displayName || "Unknown Doctor"));
+            }
         }
 
-        // Enrich clinic records with doctor names
         const enrichedRecords = fetchedClinicRecords.map(rec => ({
             ...rec,
             doctorName: doctorsMap.get(rec.doctorId) || "Unknown Doctor",
         }));
         setClinicRecords(enrichedRecords);
         
-        // Use userProfile from context as the source of truth for editable fields
         resetForm(userProfile);
 
       } catch (error) {
@@ -104,7 +118,6 @@ export default function PatientProfilePage() {
     } else if (!authLoading) {
       setDataLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile, toast, resetForm]);
 
   const onSubmit = async (data: PatientProfileFormValues) => {
@@ -116,9 +129,10 @@ export default function PatientProfilePage() {
             displayName: data.displayName,
             contactNumber: data.contactNumber,
             address: data.address,
+            photoURL: selectedAvatar,
             updatedAt: serverTimestamp(),
         });
-        await refreshUserProfile(); // Refresh the profile in the context
+        await refreshUserProfile();
         toast({ title: "Success", description: "Your profile has been updated." });
     } catch (error) {
         console.error("Error updating profile:", error);
@@ -151,14 +165,37 @@ export default function PatientProfilePage() {
         <CardContent>
           <div className="flex flex-col items-center mb-6">
             <Image
-              src={userProfile.photoURL || "https://images.unsplash.com/photo-1550835527-2b5114a2a42a"}
+              src={selectedAvatar || "https://avatar.vercel.sh/default.svg"}
               alt={userProfile.displayName || "Patient"}
               width={150}
               height={150}
               className="rounded-full border-4 border-primary shadow-md mb-4 object-cover"
-              data-ai-hint="patient portrait"
             />
           </div>
+
+          <div className="mb-8">
+            <FormLabel>Choose Avatar</FormLabel>
+            <div className="grid grid-cols-6 gap-2 mt-2">
+                {patientAvatarOptions.map((avatar) => (
+                    <button
+                      key={avatar.name}
+                      type="button"
+                      onClick={() => setSelectedAvatar(avatar.url)}
+                      className={cn(
+                        "rounded-full p-0.5 transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                        selectedAvatar === avatar.url && "ring-2 ring-primary"
+                      )}
+                      aria-label={`Select ${avatar.name}`}
+                    >
+                      <Avatar className="h-12 w-12 border">
+                        <AvatarImage src={avatar.url} alt={avatar.name} />
+                         <AvatarFallback>??</AvatarFallback>
+                      </Avatar>
+                    </button>
+                ))}
+            </div>
+          </div>
+
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -14,10 +14,13 @@ import * as z from "zod";
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { db, updateDoc, doc, serverTimestamp, USERS_COLLECTION } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 const userProfileSchema = z.object({
   displayName: z.string().min(2, "Display name is too short."),
-  email: z.string().email("Invalid email address."),
 });
 
 const clinicDetailsSchema = z.object({
@@ -30,7 +33,6 @@ const clinicDetailsSchema = z.object({
 type UserProfileFormValues = z.infer<typeof userProfileSchema>;
 type ClinicDetailsFormValues = z.infer<typeof clinicDetailsSchema>;
 
-// Mock data - replace with actual data fetching from Firestore
 const mockClinic: ClinicDetails = {
   id: "doc123", 
   clinicName: "Princeton-Plainsboro Teaching Hospital (Medicall Wing)",
@@ -39,14 +41,25 @@ const mockClinic: ClinicDetails = {
   specialization: "Diagnostic Homeopathy, Rare Conditions",
 };
 
+const doctorAvatarOptions = [
+    { name: 'Avatar 1', url: 'https://avatar.vercel.sh/doc-a.svg' },
+    { name: 'Avatar 2', url: 'https://avatar.vercel.sh/doc-b.svg' },
+    { name: 'Avatar 3', url: 'https://avatar.vercel.sh/doc-c.svg' },
+    { name: 'Avatar 4', url: 'https://avatar.vercel.sh/doc-d.svg' },
+    { name: 'Avatar 5', url: 'https://avatar.vercel.sh/doc-e.svg' },
+    { name: 'Avatar 6', url: 'https://avatar.vercel.sh/doc-f.svg' },
+];
+
 export default function DoctorProfilePage() {
-  const { userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, refreshUserProfile } = useAuth();
+  const { toast } = useToast();
+
+  const [selectedAvatar, setSelectedAvatar] = useState(userProfile?.photoURL || "");
   
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
     defaultValues: {
       displayName: "", 
-      email: "",       
     },
   });
 
@@ -59,16 +72,28 @@ export default function DoctorProfilePage() {
     if (userProfile) {
         profileForm.reset({
           displayName: userProfile.displayName || "",
-          email: userProfile.email || "",
         });
+        setSelectedAvatar(userProfile.photoURL || "");
         clinicForm.reset(mockClinic);
       }
   }, [userProfile, profileForm, clinicForm]);
 
+  const onProfileSubmit = async (data: UserProfileFormValues) => {
+    if (!user || !db) return;
 
-  const onProfileSubmit = (data: UserProfileFormValues) => {
-    console.log("Profile update:", data);
-    alert("Profile updated successfully (Medicall placeholder)!");
+    try {
+        const userDocRef = doc(db, USERS_COLLECTION, user.uid);
+        await updateDoc(userDocRef, {
+            displayName: data.displayName,
+            photoURL: selectedAvatar,
+            updatedAt: serverTimestamp(),
+        });
+        await refreshUserProfile();
+        toast({ title: "Success", description: "Your profile has been updated." });
+    } catch (error) {
+        console.error("Error updating profile:", error);
+        toast({ variant: "destructive", title: "Error", description: "Failed to update profile." });
+    }
   };
 
   const onClinicSubmit = (data: ClinicDetailsFormValues) => {
@@ -95,19 +120,42 @@ export default function DoctorProfilePage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline"><UserCircle className="h-6 w-6 text-primary" /> Your Profile</CardTitle>
-            <CardDescription>Update your personal information.</CardDescription>
+            <CardDescription>Update your personal information and profile picture.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center mb-6">
               <Image
-                src={userProfile.photoURL || "https://images.unsplash.com/photo-1612349317150-e413f6a5b16e"}
+                src={selectedAvatar || "https://avatar.vercel.sh/default.svg"}
                 alt={userProfile.displayName || "Doctor"}
                 width={150}
                 height={150}
                 className="rounded-full border-4 border-primary shadow-md mb-4 object-cover"
-                data-ai-hint="doctor portrait"
               />
             </div>
+            
+             <div className="mb-8">
+                <FormLabel>Choose Avatar</FormLabel>
+                <div className="grid grid-cols-6 gap-2 mt-2">
+                    {doctorAvatarOptions.map((avatar) => (
+                        <button
+                          key={avatar.name}
+                          type="button"
+                          onClick={() => setSelectedAvatar(avatar.url)}
+                          className={cn(
+                            "rounded-full p-0.5 transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+                            selectedAvatar === avatar.url && "ring-2 ring-primary"
+                          )}
+                          aria-label={`Select ${avatar.name}`}
+                        >
+                          <Avatar className="h-12 w-12 border">
+                            <AvatarImage src={avatar.url} alt={avatar.name} />
+                            <AvatarFallback>??</AvatarFallback>
+                          </Avatar>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             <Form {...profileForm}>
               <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                 <FormField
@@ -121,18 +169,11 @@ export default function DoctorProfilePage() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={profileForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email Address</FormLabel>
-                      <FormControl><Input type="email" placeholder="name@example.com" {...field} readOnly /></FormControl>
-                      <FormMessage />
-                       <FormDescription>Email cannot be changed here.</FormDescription>
-                    </FormItem>
-                  )}
-                />
+                <FormItem>
+                    <FormLabel>Email Address</FormLabel>
+                    <FormControl><Input type="email" value={userProfile.email || ""} readOnly disabled /></FormControl>
+                    <FormDescription>Email cannot be changed.</FormDescription>
+                </FormItem>
                 <Button type="submit" className="w-full" disabled={profileForm.formState.isSubmitting}>
                   {profileForm.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
                   {profileForm.formState.isSubmitting ? "Saving..." : "Save Profile Changes"}
