@@ -14,7 +14,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { UserPlus, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 const signupSchema = z.object({
@@ -29,7 +29,7 @@ const signupSchema = z.object({
 
 type SignupFormValues = z.infer<typeof signupSchema>;
 
-export default function SignupPage() {
+function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -222,4 +222,22 @@ function AuthCard({ role, form, onSubmit, isSubmitting }: AuthCardProps) {
         </CardContent>
       </Card>
   )
+}
+
+function SignupPageSkeleton() {
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-primary/30 via-background to-accent/30 p-4">
+            <AppLogo />
+            <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+            <p className="mt-2 text-lg text-primary-foreground_dark">Loading Page...</p>
+        </div>
+    );
+}
+
+export default function SignupPage() {
+    return (
+        <Suspense fallback={<SignupPageSkeleton />}>
+            <SignupContent />
+        </Suspense>
+    );
 }
