@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from 'date-fns';
 
 export default function PatientChatPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -38,11 +38,9 @@ export default function PatientChatPage() {
     const fetchAssociatedDoctors = async () => {
         if (!user || !userProfile || !db) {
             setDataLoading(false);
-            setPageLoading(false);
             return;
         }
         setDataLoading(true);
-        setPageLoading(true);
         try {
             const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
             const patientSnapshots = await getDocs(patientQuery);
@@ -66,7 +64,6 @@ export default function PatientChatPage() {
             toast({ variant: "destructive", title: "Error", description: "Could not load your doctors list." });
         } finally {
             setDataLoading(false);
-            setPageLoading(false);
         }
     };
     if (!authLoading) {
@@ -197,8 +194,12 @@ export default function PatientChatPage() {
     }
   };
 
-  if (dataLoading) {
-    return null;
+  if (authLoading || dataLoading) {
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export default function DoctorPatientsPage() {
-  const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
+  const { user, loading: authLoading, userProfile } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -27,11 +27,12 @@ export default function DoctorPatientsPage() {
   
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const fetchPatients = useCallback(async () => {
     if (!user || !userProfile || userProfile.role !== 'doctor') return;
     
-    setPageLoading(true);
+    setDataLoading(true);
     try {
       const q = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
       const querySnapshot = await getDocs(q);
@@ -42,7 +43,8 @@ export default function DoctorPatientsPage() {
           createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(),
           updatedAt: doc.data().updatedAt?.toDate ? doc.data().updatedAt.toDate() : new Date(),
         } as Patient))
-        .filter(patient => patient.status !== 'archived');
+        // Filter on the client side to include patients without a 'status' field (older records)
+        .filter(patient => patient.status !== 'archived'); 
         
       setPatients(fetchedPatients);
     } catch (error: any) {
@@ -58,9 +60,9 @@ export default function DoctorPatientsPage() {
         toast({ variant: "destructive", title: "Error", description: "Could not load patients." });
       }
     } finally {
-      setPageLoading(false);
+      setDataLoading(false);
     }
-  }, [user, userProfile, toast, setPageLoading]);
+  }, [user, userProfile, toast]);
   
   useEffect(() => {
     if (!authLoading && user) {
@@ -121,6 +123,7 @@ export default function DoctorPatientsPage() {
       await batch.commit();
       
       toast({ title: "Success", description: `Patient "${patientToRemove.name}" and all associated data have been removed from your clinic.` });
+      // Real-time list update
       setPatients(prev => prev.filter(p => p.id !== patientToRemove.id));
 
     } catch (error) {
@@ -133,7 +136,11 @@ export default function DoctorPatientsPage() {
   };
   
   if (authLoading) {
-    return null; 
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (
@@ -168,7 +175,9 @@ export default function DoctorPatientsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {patients.length > 0 ? (
+          {dataLoading ? (
+            <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
+          ) : patients.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>

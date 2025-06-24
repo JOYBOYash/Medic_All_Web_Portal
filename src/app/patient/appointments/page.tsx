@@ -21,7 +21,7 @@ interface EnrichedAppointment extends Appointment {
 }
 
 export default function PatientAppointmentsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") === "past" ? "past" : "upcoming";
   const { toast } = useToast();
@@ -33,11 +33,9 @@ export default function PatientAppointmentsPage() {
     const fetchAppointments = async () => {
       if (!user || !db || !userProfile) {
         setDataLoading(false);
-        setPageLoading(false);
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
@@ -93,7 +91,6 @@ export default function PatientAppointmentsPage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to load appointments." });
       } finally {
         setDataLoading(false);
-        setPageLoading(false);
       }
     };
 
@@ -151,8 +148,12 @@ export default function PatientAppointmentsPage() {
     </Card>
   );
 
-  if (dataLoading) {
-    return null;
+  if (authLoading || dataLoading) {
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

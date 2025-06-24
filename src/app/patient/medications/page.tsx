@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { PrescribedMedicine, Appointment } from "@/types/homeoconnect";
-import { Pill, Bell, ListChecks, BellRing } from "lucide-react";
+import { Pill, Bell, ListChecks, BellRing, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db, collection, query, where, getDocs, orderBy, Timestamp, PATIENTS_COLLECTION, APPOINTMENTS_COLLECTION } from "@/lib/firebase";
@@ -22,7 +22,7 @@ interface MedicationWithContext extends PrescribedMedicine {
 }
 
 export default function PatientMedicationsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const { notificationPrefs } = useSettings();
   const [medications, setMedications] = useState<MedicationWithContext[]>([]);
@@ -33,11 +33,9 @@ export default function PatientMedicationsPage() {
   const fetchMedications = useCallback(async () => {
       if (!user || !db || !userProfile) {
         setDataLoading(false);
-        setPageLoading(false);
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
@@ -77,9 +75,8 @@ export default function PatientMedicationsPage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to load medications." });
       } finally {
         setDataLoading(false);
-        setPageLoading(false);
       }
-  }, [user, db, userProfile, toast, setPageLoading]);
+  }, [user, db, userProfile, toast]);
   
   useEffect(() => {
     if (!authLoading) {
@@ -230,8 +227,12 @@ export default function PatientMedicationsPage() {
     </Card>
   );
 
-  if (dataLoading) {
-    return null;
+  if (authLoading || dataLoading) {
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

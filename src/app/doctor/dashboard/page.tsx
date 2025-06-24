@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { ToastAction } from "@/components/ui/toast";
 import { useSettings } from "@/context/SettingsContext";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface DashboardStats {
   totalPatients: number;
@@ -30,8 +31,53 @@ interface RecentPatientActivityItem {
   createdAt?: Date; 
 }
 
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8">
+       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <Skeleton className="h-9 w-72 mb-2" />
+            <Skeleton className="h-5 w-52" />
+        </div>
+        <Skeleton className="h-10 w-44" />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {[...Array(3)].map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-6 w-6 rounded-sm" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-8 w-12" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+            <CardHeader><Skeleton className="h-6 w-3/5" /></CardHeader>
+            <CardContent className="grid gap-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+            </CardContent>
+        </Card>
+         <Card>
+            <CardHeader><Skeleton className="h-6 w-4/5" /></CardHeader>
+            <CardContent className="space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+            </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export default function DoctorDashboardPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const { notificationPrefs } = useSettings();
@@ -39,11 +85,12 @@ export default function DoctorDashboardPage() {
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [recentPatients, setRecentPatients] = useState<RecentPatientActivityItem[]>([]);
   const [notificationShown, setNotificationShown] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   
   const fetchDashboardData = useCallback(async () => {
     if (!user || !db || userProfile?.role !== 'doctor') return;
 
-    setPageLoading(true); 
+    setDataLoading(true);
     try {
       // Fetch total patients
       const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
@@ -119,17 +166,17 @@ export default function DoctorDashboardPage() {
         toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
       }
     } finally {
-      setPageLoading(false);
+      setDataLoading(false);
     }
-  }, [user, userProfile, setPageLoading, toast]);
+  }, [user, userProfile, toast]);
   
   useEffect(() => {
     if (!authLoading && user) {
       fetchDashboardData();
     } else if (!authLoading) {
-      setPageLoading(false);
+      setDataLoading(false);
     }
-  }, [authLoading, user, fetchDashboardData, setPageLoading]);
+  }, [authLoading, user, fetchDashboardData]);
 
   useEffect(() => {
     if (dashboardStats && dashboardStats.appointmentsToday > 0 && !notificationShown && notificationPrefs.appointmentReminders) {
@@ -149,11 +196,7 @@ export default function DoctorDashboardPage() {
 
   const statsToDisplay = useMemo(() => {
     if (!dashboardStats) {
-      return [
-        { title: "Total Patients", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Users className="h-6 w-6 text-primary" /> },
-        { title: "Upcoming Appointments", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <CalendarClock className="h-6 w-6 text-accent" />, trend: "" },
-        { title: "Medicines in DB", value: <Loader2 className="h-5 w-5 animate-spin" />, icon: <Pill className="h-6 w-6 text-destructive" /> },
-      ];
+      return [];
     }
     return [
       { title: "Total Patients", value: dashboardStats.totalPatients.toString(), icon: <Users className="h-6 w-6 text-primary" /> },
@@ -169,8 +212,8 @@ export default function DoctorDashboardPage() {
     { label: "Manage Medicines", href: "/doctor/medicines", icon: <Pill /> },
   ];
   
-  if (authLoading) {
-     return null;
+  if (authLoading || dataLoading) {
+     return <DashboardSkeleton />;
   }
 
   return (
@@ -228,9 +271,7 @@ export default function DoctorDashboardPage() {
             <CardDescription>Overview of recent patient registrations.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!dashboardStats && !recentPatients.length ? (
-                <div className="flex justify-center items-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
-            ) : recentPatients.length > 0 ? (
+            {recentPatients.length > 0 ? (
               recentPatients.map(item => (
                 <div key={item.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
                   <Image src={item.img} alt={item.name} width={40} height={40} className="rounded-full object-cover"/>

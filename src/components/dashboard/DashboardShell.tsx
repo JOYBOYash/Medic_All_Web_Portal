@@ -46,14 +46,9 @@ interface DashboardShellProps {
 
 export function DashboardShell({ children, navItems, userRole, pageTitle }: DashboardShellProps) {
   const pathname = usePathname();
-  const router = useRouter(); // Not directly used for redirect here, AuthContext handles it.
-  const { user, userProfile, loading: authContextLoading, logout, isPageLoading, setPageLoading } = useAuth();
-
-  // The main loading logic is now handled by AuthContext and individual pages.
-  // The problematic useEffect that turned on the loader for every navigation has been removed.
+  const { user, userProfile, loading: authContextLoading, logout } = useAuth();
 
   if (authContextLoading || !user || !userProfile) {
-    // Show primary loader if auth context is still resolving user or user/profile is null
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -62,8 +57,6 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
   }
   
   if (userProfile.role !== userRole) {
-    // AuthContext's route protection useEffect is responsible for redirecting on role mismatch.
-    // This block ensures a loader is shown while that redirect is processed.
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -149,21 +142,7 @@ export function DashboardShell({ children, navItems, userRole, pageTitle }: Dash
         <SidebarInset className="flex flex-col">
            <MainHeader /> 
            <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-auto relative">
-              {isPageLoading && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                </div>
-              )}
-              {pageTitle && !isPageLoading && (
-                <h1 className="text-2xl sm:text-3xl font-bold font-headline tracking-tight mb-6 text-primary-foreground_dark">
-                  {pageTitle}
-                </h1>
-              )}
-              {/* Render children only if not page loading, OR if page loading and auth context is also done 
-                  This prevents flash of old content if isPageLoading is briefly false then true on nav.
-                  The primary guard is that individual pages should return null if their specific data is loading.
-              */}
-              {(!isPageLoading || (isPageLoading && !authContextLoading)) && children}
+              {children}
            </main>
         </SidebarInset>
     </SidebarProvider>

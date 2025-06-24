@@ -57,13 +57,14 @@ export default function NewAppointmentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedPatientId = searchParams.get("patientId");
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [pageDataLoading, setPageDataLoading] = useState(true);
 
   const form = useForm<AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
@@ -86,7 +87,7 @@ export default function NewAppointmentPage() {
 
   const fetchData = useCallback(async () => {
     if (!user || !db || userProfile?.role !== 'doctor') return;
-    setPageLoading(true);
+    setPageDataLoading(true);
     try {
       const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
       const patientsSnapshot = await getDocs(patientsQuery);
@@ -102,17 +103,17 @@ export default function NewAppointmentPage() {
       console.error("Error fetching data for new appointment: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not load patient or medicine data." });
     } finally {
-      setPageLoading(false);
+      setPageDataLoading(false);
     }
-  }, [user, userProfile, toast, setPageLoading]);
+  }, [user, userProfile, toast]);
 
   useEffect(() => {
     if (!authLoading && user) {
       fetchData();
     } else if (!authLoading) {
-      setPageLoading(false);
+      setPageDataLoading(false);
     }
-  }, [user, authLoading, fetchData, setPageLoading]);
+  }, [user, authLoading, fetchData]);
 
   useEffect(() => {
     const selectedDate = form.watch("appointmentDate");
@@ -137,7 +138,6 @@ export default function NewAppointmentPage() {
         return;
     }
     setIsSubmittingForm(true);
-    setPageLoading(true);
 
     const appointmentDateTime = new Date(data.appointmentDate);
     const [hours, minutes] = data.appointmentTime.split(':').map(Number);
@@ -171,12 +171,15 @@ export default function NewAppointmentPage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to schedule appointment. Please try again." });
     } finally {
         setIsSubmittingForm(false);
-        setPageLoading(false);
     }
   };
 
-  if (authLoading) {
-    return null;
+  if (authLoading || pageDataLoading) {
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

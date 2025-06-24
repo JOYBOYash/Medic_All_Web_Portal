@@ -66,7 +66,7 @@ function AppointmentDayCard({ title, date, appointments }: { title: string, date
 }
 
 export default function DoctorAppointmentsPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
@@ -80,7 +80,6 @@ export default function DoctorAppointmentsPage() {
       if (!user || !db || userProfile?.role !== 'doctor') return;
 
       setDataLoading(true);
-      setPageLoading(true);
       try {
         const patientsQuery = query(collection(db, PATIENTS_COLLECTION), where("doctorId", "==", user.uid));
         const patientsSnapshot = await getDocs(patientsQuery);
@@ -120,11 +119,10 @@ export default function DoctorAppointmentsPage() {
         }
       } finally {
         setDataLoading(false);
-        setPageLoading(false);
       }
     };
     fetchAppointmentsAndPatients();
-  }, [user, userProfile, toast, setPageLoading, authLoading]);
+  }, [user, userProfile, toast, authLoading]);
 
   const { todayAppointments, tomorrowAppointments, dayAfterAppointments } = useMemo(() => {
     const today = startOfDay(new Date());
@@ -178,7 +176,11 @@ export default function DoctorAppointmentsPage() {
   };
 
   if (authLoading) {
-    return null;
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

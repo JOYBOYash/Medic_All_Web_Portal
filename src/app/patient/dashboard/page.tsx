@@ -19,10 +19,10 @@ interface EnrichedAppointment extends Appointment {
 }
 
 export default function PatientDashboardPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  const [dataLoading, setDataLoading] = useState(true); // Local content readiness
+  const [dataLoading, setDataLoading] = useState(true);
   const [upcomingAppointment, setUpcomingAppointment] = useState<EnrichedAppointment | null>(null);
   const [currentMedications, setCurrentMedications] = useState<PrescribedMedicine[]>([]);
   const [notificationShown, setNotificationShown] = useState(false);
@@ -31,12 +31,10 @@ export default function PatientDashboardPage() {
     const fetchDashboardData = async () => {
       if (!user || !db || !userProfile) {
         setDataLoading(false);
-        setPageLoading(false); // Ensure loader is off if no user
         return;
       }
       
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
         const patientQuery = query(collection(db, PATIENTS_COLLECTION), where("authUid", "==", user.uid));
@@ -63,7 +61,7 @@ export default function PatientDashboardPage() {
 
         if (!appointmentSnapshot.empty) {
           const aptDoc = appointmentSnapshot.docs[0];
-          const apt = { id: aptDoc.id, ...aptDoc.data(), appointmentDate: (aptDoc.data().appointmentDate as Timestamp) } as Appointment;
+          const apt = { id: aptDoc.id, ...aptDoc.data(), appointmentDate: (aptDoc.data().appointmentDate as unknown as Timestamp).toDate() } as EnrichedAppointment;
           
           let doctorName = "Doctor";
           try {
@@ -96,7 +94,6 @@ export default function PatientDashboardPage() {
         toast({ variant: "destructive", title: "Error", description: "Could not load dashboard data." });
       } finally {
         setDataLoading(false);
-        setPageLoading(false);
       }
     };
 
@@ -108,7 +105,7 @@ export default function PatientDashboardPage() {
   
   useEffect(() => {
     if (upcomingAppointment && !notificationShown) {
-        const appointmentDate = upcomingAppointment.appointmentDate.toDate();
+        const appointmentDate = upcomingAppointment.appointmentDate;
         const today = new Date();
         
         const isAppointmentToday = format(appointmentDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
@@ -135,10 +132,12 @@ export default function PatientDashboardPage() {
     { label: "Update Profile", href: "/patient/profile", icon: <User /> },
   ];
   
-  // Let DashboardShell handle main auth loader.
-  // This component will not render its content until its own data is loaded.
-  if (dataLoading) {
-    return null;
+  if (authLoading || dataLoading) {
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (
@@ -166,7 +165,7 @@ export default function PatientDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-lg font-semibold">With {upcomingAppointment.doctorName}</p>
-            <p className="text-muted-foreground">{format(upcomingAppointment.appointmentDate.toDate(), "PPP 'at' p")}</p>
+            <p className="text-muted-foreground">{format(upcomingAppointment.appointmentDate, "PPP 'at' p")}</p>
             <div className="flex gap-2 pt-2">
               <Link href="/patient/appointments">
                   <Button variant="default" size="sm">View Details</Button>

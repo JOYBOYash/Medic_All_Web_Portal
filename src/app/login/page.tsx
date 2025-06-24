@@ -31,15 +31,13 @@ export default function LoginPage() {
   const initialRole = searchParams.get("role") === "patient" ? "patient" : "doctor";
   const emailFromQuery = searchParams.get("email");
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'patient'>(initialRole);
-  const { login, user, userProfile, loading: authContextLoading, setPageLoading } = useAuth(); // Removed setPageLoading for now
+  const { login, user, userProfile, loading: authContextLoading } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     setSelectedRole(initialRole);
   }, [initialRole]);
   
-  // Removed the useEffect hook that handled redirection. AuthContext now handles this.
-
   useEffect(() => {
     const errorParam = searchParams.get("error");
     if (errorParam === "role_mismatch") {

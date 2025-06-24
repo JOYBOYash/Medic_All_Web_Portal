@@ -5,24 +5,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bell, Palette, ShieldCheck, Moon, Sun, Monitor } from "lucide-react";
+import { Bell, Palette, ShieldCheck, Moon, Sun, Monitor, Loader2 } from "lucide-react";
 import React, { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useSettings } from "@/context/SettingsContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function DoctorSettingsPage() {
-  const { loading: authLoading, setPageLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const { theme, setTheme, notificationPrefs, setNotificationPrefs } = useSettings();
 
-  useEffect(() => {
-    if (!authLoading) {
-      setPageLoading(false);
-    }
-  }, [authLoading, setPageLoading]);
-
   if (authLoading) { 
-    return null; 
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

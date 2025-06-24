@@ -30,7 +30,7 @@ interface ClinicRecord extends Patient {
 }
 
 export default function PatientProfilePage() {
-  const { user, userProfile, loading: authLoading, setPageLoading, refreshUserProfile } = useAuth();
+  const { user, userProfile, loading: authLoading, refreshUserProfile } = useAuth();
   const { toast } = useToast();
   const [clinicRecords, setClinicRecords] = useState<ClinicRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -56,11 +56,9 @@ export default function PatientProfilePage() {
     const fetchProfileData = async () => {
       if (!user || !userProfile || !db) {
         setDataLoading(false);
-        setPageLoading(false);
         return;
       }
       setDataLoading(true);
-      setPageLoading(true);
 
       try {
         // Fetch all patient records (clinic-specific) linked to this user
@@ -98,14 +96,13 @@ export default function PatientProfilePage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to load profile data." });
       } finally {
         setDataLoading(false);
-        setPageLoading(false);
       }
     };
     
     if (!authLoading && user && userProfile) {
       fetchProfileData();
     } else if (!authLoading) {
-      setPageLoading(false);
+      setDataLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user, userProfile, toast, resetForm]);
@@ -130,7 +127,11 @@ export default function PatientProfilePage() {
   };
 
   if (authLoading || dataLoading) {
-    return null; // The DashboardShell will display the loader
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
   
   if (!userProfile) return <p>Could not load user profile.</p>

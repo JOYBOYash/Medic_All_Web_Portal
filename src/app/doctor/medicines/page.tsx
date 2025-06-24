@@ -31,7 +31,7 @@ const medicineFormSchema = z.object({
 type MedicineFormValues = z.infer<typeof medicineFormSchema>;
 
 export default function DoctorMedicinesPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -54,7 +54,6 @@ export default function DoctorMedicinesPage() {
   const fetchMedicines = useCallback(async () => {
     if (!user || !db || userProfile?.role !== 'doctor') return;
     setDataLoading(true);
-    setPageLoading(true);
     try {
       const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
       const querySnapshot = await getDocs(q);
@@ -65,17 +64,16 @@ export default function DoctorMedicinesPage() {
       toast({ variant: "destructive", title: "Error", description: "Could not load medicines." });
     } finally {
       setDataLoading(false);
-      setPageLoading(false);
     }
-  }, [user, userProfile, setPageLoading, toast]);
+  }, [user, userProfile, toast]);
   
   useEffect(() => {
     if (!authLoading && user) {
       fetchMedicines();
     } else if (!authLoading) {
-      setPageLoading(false);
+      setDataLoading(false);
     }
-  }, [user, authLoading, fetchMedicines, setPageLoading]);
+  }, [user, authLoading, fetchMedicines]);
   
   useEffect(() => {
     if (editingMedicine) {
@@ -164,7 +162,11 @@ export default function DoctorMedicinesPage() {
   }, [medicines, searchTerm]);
 
   if (authLoading) {
-    return null;
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

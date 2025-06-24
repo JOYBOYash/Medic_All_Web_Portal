@@ -40,7 +40,7 @@ const mockClinic: ClinicDetails = {
 };
 
 export default function DoctorProfilePage() {
-  const { userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { userProfile, loading: authLoading } = useAuth();
   
   const profileForm = useForm<UserProfileFormValues>({
     resolver: zodResolver(userProfileSchema),
@@ -56,17 +56,14 @@ export default function DoctorProfilePage() {
   });
 
   useEffect(() => {
-    if (!authLoading) {
-      if (userProfile) {
+    if (userProfile) {
         profileForm.reset({
           displayName: userProfile.displayName || "",
           email: userProfile.email || "",
         });
         clinicForm.reset(mockClinic);
       }
-      setPageLoading(false);
-    }
-  }, [authLoading, userProfile, setPageLoading, profileForm, clinicForm]);
+  }, [userProfile, profileForm, clinicForm]);
 
 
   const onProfileSubmit = (data: UserProfileFormValues) => {
@@ -80,7 +77,11 @@ export default function DoctorProfilePage() {
   };
 
   if (authLoading || !userProfile) { 
-    return null; 
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
   return (

@@ -23,17 +23,18 @@ export default function PatientDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   
   const patientId = params.patientId as string;
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const fetchPatientData = useCallback(async () => {
     if (!user || !db || !patientId || userProfile?.role !== 'doctor') return;
     
-    setPageLoading(true);
+    setDataLoading(true);
     try {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
       const patientDocSnap = await getFirestoreDoc(patientDocRef);
@@ -71,17 +72,17 @@ export default function PatientDetailPage() {
       console.error("Error fetching patient data: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not load patient data." });
     } finally {
-      setPageLoading(false);
+      setDataLoading(false);
     }
-  }, [patientId, user, userProfile, setPageLoading, toast, router]);
+  }, [patientId, user, userProfile, toast, router]);
 
   useEffect(() => {
     if (!authLoading && user) {
       fetchPatientData();
     } else if (!authLoading) {
-      setPageLoading(false);
+      setDataLoading(false);
     }
-  }, [authLoading, user, fetchPatientData, setPageLoading]);
+  }, [authLoading, user, fetchPatientData]);
 
   const upcomingAppointments = useMemo(() => 
     appointments
@@ -114,8 +115,16 @@ export default function PatientDetailPage() {
   };
 
 
-  if (authLoading || !patient) { 
-    return null; 
+  if (authLoading || dataLoading) { 
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
+  }
+
+  if (!patient) {
+      return <p>Patient could not be loaded.</p>
   }
 
   return (

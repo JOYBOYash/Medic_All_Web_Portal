@@ -61,7 +61,7 @@ export default function EditAppointmentPage() {
   const router = useRouter();
   const params = useParams();
   const appointmentId = params.appointmentId as string;
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const { notificationPrefs } = useSettings();
 
@@ -70,6 +70,7 @@ export default function EditAppointmentPage() {
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([]);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [pageDataLoading, setPageDataLoading] = useState(true);
 
   const form = useForm<AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
@@ -93,7 +94,7 @@ export default function EditAppointmentPage() {
 
   const fetchAppointmentData = useCallback(async () => {
     if (!user || !db || !appointmentId || userProfile?.role !== 'doctor') return;
-    setPageLoading(true);
+    setPageDataLoading(true);
 
     try {
       // Fetch Patients and Medicines
@@ -138,17 +139,17 @@ export default function EditAppointmentPage() {
       console.error("Error fetching appointment data: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not load appointment data." });
     } finally {
-      setPageLoading(false);
+      setPageDataLoading(false);
     }
-  }, [user, userProfile, appointmentId, router, toast, form, setPageLoading]);
+  }, [user, userProfile, appointmentId, router, toast, form]);
 
   useEffect(() => {
     if (!authLoading && user) {
       fetchAppointmentData();
     } else if (!authLoading) {
-      setPageLoading(false);
+      setPageDataLoading(false);
     }
-  }, [user, authLoading, fetchAppointmentData, setPageLoading]);
+  }, [user, authLoading, fetchAppointmentData]);
 
   useEffect(() => {
     const selectedDate = form.watch("appointmentDate");
@@ -172,7 +173,6 @@ export default function EditAppointmentPage() {
         return;
     }
     setIsSubmittingForm(true);
-    setPageLoading(true);
 
     const appointmentDateTime = new Date(data.appointmentDate);
     const [hours, minutes] = data.appointmentTime.split(':').map(Number);
@@ -229,15 +229,18 @@ export default function EditAppointmentPage() {
         toast({ variant: "destructive", title: "Error", description: "Failed to update appointment." });
     } finally {
         setIsSubmittingForm(false);
-        setPageLoading(false);
     }
   };
 
-  if (authLoading || !appointment) {
-    return null; // Show loader via context
+  if (authLoading || pageDataLoading) {
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
   }
 
-  const patient = patients.find(p => p.id === appointment.patientId);
+  const patient = patients.find(p => p.id === appointment?.patientId);
 
   return (
     <div className="space-y-6">

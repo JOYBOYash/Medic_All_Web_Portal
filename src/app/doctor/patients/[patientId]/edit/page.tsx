@@ -29,9 +29,10 @@ export default function EditPatientPage() {
   const params = useParams();
   const patientId = params.patientId as string;
 
-  const { user, loading: authLoading, userProfile, setPageLoading } = useAuth();
+  const { user, loading: authLoading, userProfile } = useAuth();
   const { toast } = useToast();
   const [patientData, setPatientData] = useState<Patient | null>(null);
+  const [pageDataLoading, setPageDataLoading] = useState(true);
   
   const form = useForm<PatientFormValues>({
     resolver: zodResolver(patientFormSchema),
@@ -43,7 +44,7 @@ export default function EditPatientPage() {
   const fetchPatient = useCallback(async () => {
     if (!user || !db || !patientId || userProfile?.role !== 'doctor') return;
     
-    setPageLoading(true);
+    setPageDataLoading(true);
     try {
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
       const docSnap = await getFirestoreDoc(patientDocRef);
@@ -61,17 +62,17 @@ export default function EditPatientPage() {
       console.error("Error fetching patient for edit:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to load patient data for editing." });
     } finally {
-      setPageLoading(false);
+      setPageDataLoading(false);
     }
-  }, [patientId, user, userProfile, router, toast, form, setPageLoading]);
+  }, [patientId, user, userProfile, router, toast, form]);
 
   useEffect(() => {
     if (!authLoading && user) {
       fetchPatient();
     } else if (!authLoading) {
-       setPageLoading(false);
+       setPageDataLoading(false);
     }
-  }, [authLoading, user, fetchPatient, setPageLoading]);
+  }, [authLoading, user, fetchPatient]);
 
   const onSubmit = async (data: PatientFormValues) => {
     if (!user || !db || !patientId || userProfile?.role !== 'doctor' || !patientData) {
@@ -82,7 +83,6 @@ export default function EditPatientPage() {
     const patientDocRef = doc(db, PATIENTS_COLLECTION, patientId);
 
     try {
-      setPageLoading(true);
       await updateDoc(patientDocRef, {
         complications: data.complications,
         updatedAt: serverTimestamp(),
@@ -92,13 +92,19 @@ export default function EditPatientPage() {
     } catch (error) {
       console.error("Error updating patient:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to update patient. Please try again." });
-    } finally {
-      setPageLoading(false);
     }
   };
 
-  if (authLoading || !patientData) { 
-    return null; 
+  if (authLoading || pageDataLoading) { 
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
+  }
+
+  if (!patientData) {
+      return <p>Patient could not be loaded.</p>
   }
 
   return (

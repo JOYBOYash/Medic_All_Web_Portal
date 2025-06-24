@@ -13,8 +13,6 @@ interface AuthContextType {
   user: User | null;
   userProfile: UserProfile | null;
   loading: boolean;
-  isPageLoading: boolean;
-  setPageLoading: (isLoading: boolean) => void;
   login: (email: string, password: string) => Promise<LoginResult>;
   signup: (email: string, password: string, role: 'doctor' | 'patient', displayName: string) => Promise<SignupResult>;
   logout: () => Promise<void>;
@@ -40,12 +38,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPageLoading, setIsPageLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
   const logoutHandler = useCallback(async ({ suppressRedirect = false } = {}) => {
-    setIsPageLoading(true);
+    setLoading(true);
     await signOut(auth);
     if (!suppressRedirect) {
       router.push('/login');
@@ -54,6 +51,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
       if (firebaseUser) {
         const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
         const userDocSnap = await getDoc(userDocRef);
@@ -80,7 +78,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found after retry. Logging out.`);
                 await logoutHandler({ suppressRedirect: true });
               }
+              setLoading(false);
             }, 2500);
+            return; // Exit early to wait for timeout
           } else {
             // This is likely an existing user with a missing profile, which is a critical error.
             console.error(`CRITICAL: User profile for ${firebaseUser.uid} not found. Logging out.`);
@@ -92,7 +92,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUserProfile(null);
       }
       setLoading(false);
-      setIsPageLoading(false);
     });
 
     return () => unsubscribe();
@@ -126,7 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [user, userProfile, loading, pathname]);
 
   const login = async (email: string, password: string): Promise<LoginResult> => {
-    setIsPageLoading(true);
+    setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       // onAuthStateChanged will handle setting state and redirection.
@@ -137,13 +136,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         errorMessage = "Invalid email or password.";
       }
       toast({ variant: "destructive", title: "Login Failed", description: errorMessage });
-      setIsPageLoading(false);
+      setLoading(false);
       return { success: false, error: errorMessage };
     }
   };
 
   const signup = async (email: string, password: string, role: 'doctor' | 'patient', displayName: string): Promise<SignupResult> => {
-    setIsPageLoading(true);
+    setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
@@ -181,7 +180,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error.code === 'auth/email-already-in-use') errorMessage = "This email address is already in use.";
       else if (error.code === 'auth/weak-password') errorMessage = "Password is too weak.";
       toast({ variant: "destructive", title: "Signup Failed", description: errorMessage });
-      setIsPageLoading(false);
+      setLoading(false);
       return { success: false, error: errorMessage, errorCode: error.code };
     }
   };
@@ -197,7 +196,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, isPageLoading, setPageLoading: setIsPageLoading, login, signup, logout: logoutHandler, refreshUserProfile }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, login, signup, logout: logoutHandler, refreshUserProfile }}>
       {children}
     </AuthContext.Provider>
   );

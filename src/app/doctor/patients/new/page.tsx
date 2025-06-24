@@ -34,7 +34,7 @@ type SearchStatus = 'idle' | 'searching' | 'found' | 'not_found' | 'already_exis
 
 export default function NewPatientPage() {
   const router = useRouter();
-  const { user, userProfile, setPageLoading } = useAuth();
+  const { user, userProfile } = useAuth();
   const { toast } = useToast();
 
   const [step, setStep] = useState<'search' | 'details'>('search');
@@ -52,10 +52,6 @@ export default function NewPatientPage() {
       complications: "",
     },
   });
-
-  useEffect(() => {
-    setPageLoading(false);
-  }, [setPageLoading, step]);
 
   const handleSearch = async () => {
     if (!searchEmail.trim() || !user) return;

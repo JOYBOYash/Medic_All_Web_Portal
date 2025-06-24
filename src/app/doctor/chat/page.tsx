@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 
 export default function DoctorChatPage() {
-  const { user, userProfile, loading: authLoading, setPageLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
@@ -32,12 +32,10 @@ export default function DoctorChatPage() {
     if (authLoading) return;
     if (!user || !userProfile || userProfile.role !== 'doctor') {
         setDataLoading(false);
-        setPageLoading(false);
         return;
     }
     
     setDataLoading(true);
-    setPageLoading(true);
 
     const q = query(
       collection(db, CHAT_ROOMS_COLLECTION),
@@ -56,17 +54,15 @@ export default function DoctorChatPage() {
         }
       }
       setDataLoading(false);
-      setPageLoading(false);
     }, (error) => {
       console.error("Error fetching chat rooms: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not load conversations." });
       setDataLoading(false);
-      setPageLoading(false);
     });
 
     return () => unsubscribe();
 
-  }, [user, userProfile, authLoading, toast, setPageLoading, selectedRoom]);
+  }, [user, userProfile, authLoading, toast, selectedRoom]);
   
   useEffect(() => {
     if (!selectedRoom?.id) {
@@ -164,7 +160,13 @@ export default function DoctorChatPage() {
       return { name: info?.displayName || "Patient", photoURL: info?.photoURL || `https://avatar.vercel.sh/${otherParticipantId}.svg` };
   }
 
-  if (dataLoading) return null;
+  if (dataLoading || authLoading) {
+     return (
+        <div className="flex h-full w-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
+  }
 
   return (
     <div className="h-[calc(100vh-var(--header-height,4rem)-2rem)] md:h-[calc(100vh-var(--header-height,4rem)-4rem)] flex flex-col">
