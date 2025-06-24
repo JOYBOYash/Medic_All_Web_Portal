@@ -39,6 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   const logoutHandler = useCallback(async () => {
     setLoading(true);
@@ -83,13 +84,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (loading) return;
 
-    const isAuthPage = ['/login', '/signup', '/'].includes(usePathname());
+    const isAuthPage = ['/login', '/signup', '/'].includes(pathname);
 
     if (user && userProfile && isAuthPage) {
       const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
       router.replace(destination);
     }
-  }, [user, userProfile, loading, router]);
+  }, [user, userProfile, loading, router, pathname]);
 
   const login = async (email: string, password: string): Promise<LoginResult> => {
     setLoading(true);
