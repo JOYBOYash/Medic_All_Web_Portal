@@ -32,6 +32,12 @@ export default function DoctorChatPage() {
   const [messageToDelete, setMessageToDelete] = useState<ChatMessage | null>(null);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const selectedRoomRef = useRef<ChatRoom | null>(null);
+
+  // Keep the ref updated with the latest selectedRoom state
+  useEffect(() => {
+    selectedRoomRef.current = selectedRoom;
+  }, [selectedRoom]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -51,9 +57,10 @@ export default function DoctorChatPage() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const rooms = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatRoom));
       setChatRooms(rooms);
-      // If a room is selected, update its state from the new snapshot
-      if (selectedRoom) {
-        const updatedSelectedRoom = rooms.find(r => r.id === selectedRoom.id);
+      
+      const currentSelectedRoom = selectedRoomRef.current;
+      if (currentSelectedRoom) {
+        const updatedSelectedRoom = rooms.find(r => r.id === currentSelectedRoom.id);
         if (updatedSelectedRoom) {
           setSelectedRoom(updatedSelectedRoom);
         }
@@ -67,7 +74,7 @@ export default function DoctorChatPage() {
 
     return () => unsubscribe();
 
-  }, [user, userProfile, authLoading, toast, selectedRoom]);
+  }, [user, userProfile, authLoading, toast]);
   
   useEffect(() => {
     if (!selectedRoom?.id) {
