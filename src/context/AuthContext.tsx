@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { doc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, USERS_COLLECTION } from '@/lib/firebase';
 import type { UserProfile } from '@/types/homeoconnect';
@@ -17,6 +17,7 @@ interface AuthContextType {
   signup: (email: string, password: string, role: 'doctor' | 'patient', displayName: string) => Promise<SignupResult>;
   logout: () => Promise<void>;
   refreshUserProfile: () => Promise<void>;
+  changeUserPassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string; }>;
 }
 
 interface LoginResult {
@@ -62,9 +63,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(firebaseUser);
             setUserProfile(profile);
           } else {
-            // Handle case where user exists in Auth but not Firestore
-            // This might happen on first signup if Firestore write is delayed
-            console.warn(`User profile for ${firebaseUser.uid} not found. Attempting to sign out.`);
+            console.warn(`User profile for ${firebaseUser.uid} not found. Signing out.`);
             await logoutHandler();
           }
         } catch (error) {
@@ -83,9 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   
   useEffect(() => {
     if (loading) return;
-
-    const isAuthPage = ['/login', '/signup', '/'].includes(pathname);
-
+    const isAuthPage = ['/login', '/signup', '/', '/forgot-password'].includes(pathname);
     if (user && userProfile && isAuthPage) {
       const destination = userProfile.role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard';
       router.replace(destination);
@@ -96,14 +93,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will handle setting state and redirection.
       return { success: true, user: userCredential.user };
     } catch (error: any) {
       let errorMessage = "Failed to login.";
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = "Invalid email or password.";
       }
-      toast({ variant: "destructive", title: "Login Failed", description: errorMessage });
       setLoading(false);
       return { success: false, error: errorMessage };
     }
@@ -132,16 +127,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updatedAt: serverTimestamp(),
       });
       
-      // onAuthStateChanged will pick up the new user and their profile.
       return { success: true, user: firebaseUser };
 
     } catch (error: any) {
       let errorMessage = "Failed to signup. Please try again.";
       if (error.code === 'auth/email-already-in-use') errorMessage = "This email address is already in use.";
       else if (error.code === 'auth/weak-password') errorMessage = "Password is too weak.";
-      toast({ variant: "destructive", title: "Signup Failed", description: errorMessage });
       setLoading(false);
       return { success: false, error: errorMessage, errorCode: error.code };
+    }
+  };
+  
+  const changeUserPassword = async (currentPassword: string, newPassword: string) => {
+    if (!user || !user.email) {
+      return { success: false, error: "No user logged in." };
+    }
+    
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    
+    try {
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      return { success: true };
+    } catch (error: any) {
+      let errorMessage = "Failed to change password.";
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        errorMessage = "The current password you entered is incorrect.";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many attempts. Please try again later.";
+      }
+      return { success: false, error: errorMessage };
     }
   };
 
@@ -158,7 +173,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, login, signup, logout: logoutHandler, refreshUserProfile }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, login, signup, logout: logoutHandler, refreshUserProfile, changeUserPassword }}>
       {children}
     </AuthContext.Provider>
   );

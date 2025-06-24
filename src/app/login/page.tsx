@@ -182,7 +182,7 @@ function AuthCard({ role, form, onSubmit, isSubmitting }: AuthCardProps) {
                     <div className="flex items-center justify-between">
                       <FormLabel>Password</FormLabel>
                       <Link
-                        href="#" // TODO: Implement forgot password
+                        href="/forgot-password"
                         className="text-sm font-medium text-primary hover:underline"
                       >
                         Forgot password?
