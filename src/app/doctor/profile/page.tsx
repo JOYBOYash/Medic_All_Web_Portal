@@ -170,11 +170,11 @@ export default function DoctorProfilePage() {
                     </FormItem>
                   )}
                 />
-                <FormItem>
-                    <FormLabel>Email Address</FormLabel>
-                    <FormControl><Input type="email" value={userProfile.email || ""} readOnly disabled /></FormControl>
-                    <FormDescription>Email cannot be changed.</FormDescription>
-                </FormItem>
+                <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input id="email" type="email" value={userProfile.email || ""} readOnly disabled />
+                    <p className="text-sm text-muted-foreground">Email cannot be changed.</p>
+                </div>
                 <Button type="submit" className="w-full" disabled={profileForm.formState.isSubmitting}>
                   {profileForm.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
                   {profileForm.formState.isSubmitting ? "Saving..." : "Save Profile Changes"}

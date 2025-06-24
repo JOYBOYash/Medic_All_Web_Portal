@@ -17,6 +17,7 @@ import { PATIENTS_COLLECTION, doc, getFirestoreDoc, updateDoc, serverTimestamp, 
 import type { Patient } from "@/types/homeoconnect";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const patientFormSchema = z.object({
   complications: z.string().min(5, { message: "Please describe complications (min 5 characters)." }),
@@ -128,22 +129,22 @@ export default function EditPatientPage() {
         </CardHeader>
         <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                <div className="space-y-2">
+                    <Label>Full Name</Label>
                     <Input value={patientData.name} readOnly disabled />
-                </FormItem>
-                 <FormItem>
-                    <FormLabel>Email Address</FormLabel>
+                </div>
+                 <div className="space-y-2">
+                    <Label>Email Address</Label>
                     <Input value={patientData.email} readOnly disabled />
-                </FormItem>
-                 <FormItem>
-                    <FormLabel>Age</FormLabel>
+                </div>
+                 <div className="space-y-2">
+                    <Label>Age</Label>
                     <Input value={patientData.age} readOnly disabled />
-                </FormItem>
-                 <FormItem>
-                    <FormLabel>Sex</FormLabel>
+                </div>
+                 <div className="space-y-2">
+                    <Label>Sex</Label>
                     <Input value={patientData.sex} className="capitalize" readOnly disabled />
-                </FormItem>
+                </div>
             </div>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
