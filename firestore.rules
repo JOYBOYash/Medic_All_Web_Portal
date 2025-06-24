@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -71,20 +72,19 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid in request.resource.data.participants;
       
       match /messages/{messageId} {
-        // A user can read messages if their UID is part of the chat room's ID.
-        allow read: if request.auth != null && request.auth.uid in roomId.split('_');
+        // A user can read messages if they are a participant in the chat.
+        allow read: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants;
 
         // A user can create a message if they are a participant AND the sender.
         allow create: if request.auth != null &&
-                      request.auth.uid in roomId.split('_') &&
+                      request.auth.uid in get(/databases/$(database)/documents/chatRooms/$(roomId)).data.participants &&
                       request.resource.data.senderId == request.auth.uid;
                       
-        // Disallow message editing.
+        // A user can delete their own message within 5 minutes of sending.
+        allow delete: if request.auth.uid == resource.data.senderId && request.time < resource.data.timestamp + duration.value(300, 's');
+
+        // Disallow message editing to maintain chat history.
         allow update: if false;
-        // Allow a doctor to delete messages as part of clinic cleanup.
-        allow delete: if request.auth != null &&
-                       request.auth.uid in roomId.split('_') &&
-                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'doctor';
       }
     }
   }

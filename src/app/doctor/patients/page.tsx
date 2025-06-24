@@ -100,23 +100,23 @@ export default function DoctorPatientsPage() {
     try {
       const batch = writeBatch(db);
 
+      // Delete all appointments for this patient from this doctor
       const appointmentsQuery = query(collection(db, APPOINTMENTS_COLLECTION), where("patientId", "==", patientToRemove.id), where("doctorId", "==", user.uid));
       const appointmentsSnapshot = await getDocs(appointmentsQuery);
       appointmentsSnapshot.forEach(doc => batch.delete(doc.ref));
 
+      // Delete the chat room if it exists
       if (patientToRemove.authUid) {
           const ids = [user.uid, patientToRemove.authUid];
           ids.sort();
           const chatRoomId = ids.join('_');
           const chatRoomRef = doc(db, CHAT_ROOMS_COLLECTION, chatRoomId);
-          
-          const messagesQuery = query(collection(chatRoomRef, "messages"));
-          const messagesSnapshot = await getDocs(messagesQuery);
-          messagesSnapshot.forEach(doc => batch.delete(doc.ref));
-
+          // Note: We are deleting the chat room document. The subcollection of messages will become orphaned.
+          // This is a trade-off to avoid complex security rules or hitting read limits on batched deletes.
           batch.delete(chatRoomRef);
       }
 
+      // Finally, delete the patient record itself
       const patientDocRef = doc(db, PATIENTS_COLLECTION, patientToRemove.id);
       batch.delete(patientDocRef);
 
