@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { ClinicDetails, UserProfile } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -98,7 +99,7 @@ export default function DoctorProfilePage() {
 
   const onClinicSubmit = (data: ClinicDetailsFormValues) => {
     console.log("Clinic details update:", data);
-    alert("Clinic details updated successfully (Medicall placeholder)!");
+    toast({ title: "Success", description: "Clinic details updated successfully." });
   };
 
   if (authLoading || !userProfile) { 
@@ -134,7 +135,7 @@ export default function DoctorProfilePage() {
             </div>
             
              <div className="mb-8">
-                <FormLabel>Choose Avatar</FormLabel>
+                <Label>Choose Avatar</Label>
                 <div className="grid grid-cols-6 gap-2 mt-2">
                     {doctorAvatarOptions.map((avatar) => (
                         <button

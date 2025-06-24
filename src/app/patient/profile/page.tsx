@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { UserProfile, Patient } from "@/types/homeoconnect";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,7 +15,7 @@ import * as z from "zod";
 import { UserCircle, Save, ShieldAlert, Loader2, Building } from "lucide-react";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
-import { db, doc, updateDoc, serverTimestamp, query, collection, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION } from "@/lib/firebase";
+import { db, doc, updateDoc, serverTimestamp, query, collection, where, getDocs, PATIENTS_COLLECTION, USERS_COLLECTION, writeBatch } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -124,14 +125,29 @@ export default function PatientProfilePage() {
     if (!user || !db) return;
     
     try {
+        const batch = writeBatch(db);
         const userDocRef = doc(db, USERS_COLLECTION, user.uid);
-        await updateDoc(userDocRef, {
+        batch.update(userDocRef, {
             displayName: data.displayName,
             contactNumber: data.contactNumber,
             address: data.address,
             photoURL: selectedAvatar,
             updatedAt: serverTimestamp(),
         });
+
+        // Also update the photoURL in the chatRoom participantInfo
+        const chatRoomsQuery = query(collection(db, "chatRooms"), where("participants", "array-contains", user.uid));
+        const chatRoomsSnapshot = await getDocs(chatRoomsQuery);
+        chatRoomsSnapshot.forEach(roomDoc => {
+          const roomRef = doc(db, "chatRooms", roomDoc.id);
+          batch.update(roomRef, {
+            [`participantInfo.${user.uid}.photoURL`]: selectedAvatar,
+            [`participantInfo.${user.uid}.displayName`]: data.displayName
+          });
+        });
+
+        await batch.commit();
+
         await refreshUserProfile();
         toast({ title: "Success", description: "Your profile has been updated." });
     } catch (error) {
@@ -174,7 +190,7 @@ export default function PatientProfilePage() {
           </div>
 
           <div className="mb-8">
-            <FormLabel>Choose Avatar</FormLabel>
+            <Label>Choose Avatar</Label>
             <div className="grid grid-cols-6 gap-2 mt-2">
                 {patientAvatarOptions.map((avatar) => (
                     <button
