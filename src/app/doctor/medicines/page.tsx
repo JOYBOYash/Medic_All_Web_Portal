@@ -16,7 +16,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { db, MEDICINES_COLLECTION, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "@/lib/firebase";
+import { db, MEDICINES_COLLECTION, collection, query, where, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, onSnapshot, orderBy } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation"; 
 import { cn } from "@/lib/utils";
@@ -51,29 +51,38 @@ export default function DoctorMedicinesPage() {
     },
   });
 
-  const fetchMedicines = useCallback(async () => {
-    if (!user || !db || userProfile?.role !== 'doctor') return;
-    setDataLoading(true);
-    try {
-      const q = query(collection(db, MEDICINES_COLLECTION), where("doctorId", "==", user.uid));
-      const querySnapshot = await getDocs(q);
-      const fetchedMedicines = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
-      setMedicines(fetchedMedicines);
-    } catch (error) {
-      console.error("Error fetching medicines: ", error);
-      toast({ variant: "destructive", title: "Error", description: "Could not load medicines." });
-    } finally {
-      setDataLoading(false);
-    }
-  }, [user, userProfile, toast]);
-  
   useEffect(() => {
-    if (!authLoading && user) {
-      fetchMedicines();
-    } else if (!authLoading) {
-      setDataLoading(false);
+    if (authLoading || !user || !db || userProfile?.role !== 'doctor') {
+      if (!authLoading) setDataLoading(false);
+      return;
     }
-  }, [user, authLoading, fetchMedicines]);
+    
+    setDataLoading(true);
+    const q = query(
+        collection(db, MEDICINES_COLLECTION), 
+        where("doctorId", "==", user.uid),
+        orderBy("name")
+    );
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedMedicines = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Medicine));
+        setMedicines(fetchedMedicines);
+        setDataLoading(false);
+    }, (error) => {
+        console.error("Error fetching medicines in real-time: ", error);
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: error.message.includes("indexes") 
+                ? "An index is required to view medicines. Please create it in your Firebase console."
+                : "Could not load medicines."
+        });
+        setDataLoading(false);
+    });
+
+    return () => unsubscribe(); // Cleanup listener on component unmount
+
+  }, [user, userProfile, authLoading, toast]);
   
   useEffect(() => {
     if (editingMedicine) {
@@ -101,7 +110,6 @@ export default function DoctorMedicinesPage() {
             const updateData = { ...data, doctorId: editingMedicine.doctorId, updatedAt: serverTimestamp() };
             delete updateData.id; 
             await updateDoc(medDocRef, updateData);
-            setMedicines(prev => prev.map(m => m.id === editingMedicine.id ? { ...m, ...data, updatedAt: new Date() } as Medicine : m));
             toast({ title: "Success", description: `Medicine "${data.name}" updated.` });
         } else {
             const newMedicineData = {
@@ -111,8 +119,7 @@ export default function DoctorMedicinesPage() {
                 updatedAt: serverTimestamp(),
             };
             delete newMedicineData.id; 
-            const docRef = await addDoc(collection(db, MEDICINES_COLLECTION), newMedicineData);
-            setMedicines(prev => [{ id: docRef.id, ...newMedicineData, createdAt: new Date(), updatedAt: new Date() } as Medicine, ...prev]);
+            await addDoc(collection(db, MEDICINES_COLLECTION), newMedicineData);
             toast({ title: "Success", description: `Medicine "${data.name}" added.`});
         }
         setIsDialogOpen(false);
@@ -139,7 +146,6 @@ export default function DoctorMedicinesPage() {
     if (confirm("Are you sure you want to delete this medicine? This action cannot be undone.")) {
       try {
         await deleteDoc(doc(db, MEDICINES_COLLECTION, medicineId));
-        setMedicines(prev => prev.filter(m => m.id !== medicineId));
         toast({ title: "Success", description: "Medicine deleted." });
       } catch (error) {
         console.error("Error deleting medicine: ", error);
@@ -158,7 +164,7 @@ export default function DoctorMedicinesPage() {
     return medicines.filter(med =>
       med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (med.description && med.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    ).sort((a, b) => a.name.localeCompare(b.name));
+    );
   }, [medicines, searchTerm]);
 
   if (authLoading) {
