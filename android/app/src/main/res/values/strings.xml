@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">medicall</string>
+    <string name="title_activity_main">medicall</string>
+    <string name="package_name">aetherlabs.com</string>
+    <string name="custom_url_scheme">aetherlabs.com</string>
+</resources>
